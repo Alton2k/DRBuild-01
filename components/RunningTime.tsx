@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+/**
+ * Converts elapsed seconds into a compact relative time label.
+ */
 function formatRelativeTime(seconds: number) {
   if (seconds < 60) return 'Just now';
   const minutes = Math.floor(seconds / 60);
@@ -16,6 +19,9 @@ interface RunningTimeProps {
   timestamp: string;
 }
 
+/**
+ * Shows a live-updating relative timestamp for a submitted deal.
+ */
 export default function RunningTime({ timestamp }: RunningTimeProps) {
   const targetTime = useMemo(() => new Date(timestamp).getTime(), [timestamp]);
   const [label, setLabel] = useState(() => {

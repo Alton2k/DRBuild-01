@@ -1,0 +1,25 @@
+import React from "react";
+
+interface FormContainerProps {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}
+
+/**
+ * Provides a shared card layout, heading, and description for form-based pages.
+ */
+export default function FormContainer({ title, description, children }: FormContainerProps) {
+  return (
+    <section className="mx-auto w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
+      <div className="mb-8 space-y-3">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Post a deal</p>
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{title}</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">{description}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}

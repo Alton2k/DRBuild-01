@@ -1,0 +1,112 @@
+[
+  {
+    "id": "2d6cff7c-d541-4b8e-b007-d78154a4aa1b",
+    "dealId": "a0eec453-898f-4e54-8dd6-144393290445",
+    "parentId": null,
+    "authorName": "Vin",
+    "body": "asdsadas",
+    "likeCount": 0,
+    "likedBy": [],
+    "createdAt": "2026-04-30T18:07:22.312Z"
+  },
+  {
+    "id": "9a8e4d07-bec7-4c27-bece-34d748e96261",
+    "dealId": "a0eec453-898f-4e54-8dd6-144393290445",
+    "parentId": null,
+    "authorName": "San",
+    "body": "asdasdasd",
+    "likeCount": 0,
+    "likedBy": [],
+    "createdAt": "2026-04-30T18:07:38.481Z"
+  },
+  {
+    "id": "1c110b5d-217c-455f-ae72-a6d13b17f2bb",
+    "dealId": "a0eec453-898f-4e54-8dd6-144393290445",
+    "parentId": null,
+    "authorName": "Ren",
+    "body": "sad",
+    "likeCount": 0,
+    "likedBy": [],
+    "createdAt": "2026-04-30T18:07:45.500Z"
+  },
+  {
+    "id": "53cff377-e7eb-4e47-b4e4-77bbaa7af404",
+    "dealId": "24ec0041-e572-46c3-9de2-de5eae8129fe",
+    "parentId": null,
+    "authorName": "Vin",
+    "body": "Menipu!",
+    "likeCount": 2,
+    "likedBy": [
+      "78bf9333-5980-46cb-9a48-d386b27a4542"
+    ],
+    "createdAt": "2026-04-30T18:18:48.849Z"
+  },
+  {
+    "id": "2405ceb5-098f-4ae0-b764-8c694de4de3d",
+    "dealId": "24ec0041-e572-46c3-9de2-de5eae8129fe",
+    "parentId": null,
+    "authorName": "Adam",
+    "body": "Good deal!",
+    "likeCount": 2,
+    "likedBy": [
+      "78bf9333-5980-46cb-9a48-d386b27a4542"
+    ],
+    "createdAt": "2026-04-30T18:21:33.441Z"
+  },
+  {
+    "id": "4b958f38-6b81-4b02-9462-605274463470",
+    "dealId": "24ec0041-e572-46c3-9de2-de5eae8129fe",
+    "parentId": null,
+    "authorName": "Sam",
+    "body": "This website is always on sale! Get it cheaper elsewhere",
+    "likeCount": 9,
+    "likedBy": [
+      "78bf9333-5980-46cb-9a48-d386b27a4542"
+    ],
+    "createdAt": "2026-04-30T18:26:21.807Z"
+  },
+  {
+    "id": "067bc4b1-0538-4e7c-ac0a-ced6034de351",
+    "dealId": "24ec0041-e572-46c3-9de2-de5eae8129fe",
+    "parentId": "4b958f38-6b81-4b02-9462-605274463470",
+    "authorName": "Aaron",
+    "body": "Yeah saw it cheaper on Shopee",
+    "likeCount": 2,
+    "likedBy": [
+      "78bf9333-5980-46cb-9a48-d386b27a4542"
+    ],
+    "createdAt": "2026-04-30T18:37:14.066Z"
+  },
+  {
+    "id": "ef5fec56-2959-45b4-9534-279c08f72e68",
+    "dealId": "24ec0041-e572-46c3-9de2-de5eae8129fe",
+    "parentId": null,
+    "authorName": "Sam",
+    "body": "This website is always on sale! Get it cheaper elsewhere",
+    "likeCount": 0,
+    "likedBy": [],
+    "createdAt": "2026-04-30T18:39:09.888Z"
+  },
+  {
+    "id": "af6d4ca6-5b51-4e78-80fc-9d0b327b3553",
+    "dealId": "24ec0041-e572-46c3-9de2-de5eae8129fe",
+    "parentId": null,
+    "authorName": "Sam",
+    "body": "This website is always on sale! Get it cheaper elsewhere",
+    "likeCount": 0,
+    "likedBy": [],
+    "createdAt": "2026-04-30T18:39:23.232Z"
+  },
+  {
+    "id": "54277904-3e0a-4477-ba02-2527b3306254",
+    "dealId": "95773e65-a872-46a7-bebc-31ad6c0acfd1",
+    "parentId": null,
+    "authorName": "LOH",
+    "body": "This is bad",
+    "likeCount": 1,
+    "likedBy": [
+      "78bf9333-5980-46cb-9a48-d386b27a4542"
+    ],
+    "createdAt": "2026-05-01T04:05:14.817Z"
+  }
+]

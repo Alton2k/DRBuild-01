@@ -1,33 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is a [Next.js](https://nextjs.org) project using SQLite for local app data.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies, prepare the local database, then run the development server:
 
 ```bash
+npm install
+npm run db:reset
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase Auth
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Authentication uses Supabase for email/password and Google sign-in. Copy `.env.example` to `.env.local` and fill in:
 
-## Learn More
+```text
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+ADMIN_EMAILS=admin@example.com
+```
 
-To learn more about Next.js, take a look at the following resources:
+For local Google OAuth and email redirects, add this URL in Supabase and Google:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+http://localhost:3000/auth/callback
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`ADMIN_EMAILS` is a comma-separated list. Only those signed-in users can open `/admin` or run admin moderation actions.
+
+## SQLite database
+
+The local SQLite database lives at:
+
+```text
+lib/data/app.sqlite
+```
+
+SQLite may also create `lib/data/app.sqlite-wal` and `lib/data/app.sqlite-shm` while the app is running. These local database files are ignored by Git.
+
+Database setup is intentionally simple:
+
+- `lib/db/schema.sql` contains the table and index definitions.
+- `lib/db.ts` opens `lib/data/app.sqlite`, enables foreign keys/WAL mode, and runs the schema with `CREATE TABLE IF NOT EXISTS`.
+- No Prisma or ORM is used.
+
+Useful commands:
+
+```bash
+npm run db:seed
+```
+
+Creates the database if needed and inserts a small idempotent set of development deals, comments, votes, likes, and a report.
+
+```bash
+npm run db:reset
+```
+
+Deletes the local SQLite files, recreates the schema, and runs the seed script.
+
+Stop the dev server before resetting if it is currently using the database.
+
+```bash
+npm run db:smoke
+```
+
+Runs a lightweight check that the schema opens, seeded data exists, the homepage has at least one active approved deal, and comments point at real deals.
+
+## Development
+
+The main app flows read and write SQLite through `lib/deals.ts` and `lib/comments.ts`. Submitted deals start as `pending`; approve them from `/admin` to publish them on the homepage.
+
+Run the usual checks before committing larger changes:
+
+```bash
+npm run lint
+npm run build
+```
 
 ## Deploy on Vercel
 
