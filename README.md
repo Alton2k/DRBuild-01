@@ -1,4 +1,4 @@
-This is a [Next.js](https://nextjs.org) project using SQLite for local app data.
+This is a [Next.js](https://nextjs.org) project using SQLite for local development data.
 
 ## Getting Started
 
@@ -14,7 +14,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Supabase Auth
 
-Authentication uses Supabase for email/password and Google sign-in. Copy `.env.example` to `.env.local` and fill in:
+Authentication uses Supabase for email/password and Google sign-in. Copy `.env.example` to `.env.local` for local development and fill in:
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL=
@@ -30,7 +30,9 @@ http://localhost:3000/auth/callback
 
 `ADMIN_EMAILS` is a comma-separated list. Only those signed-in users can open `/admin` or run admin moderation actions.
 
-## SQLite database
+Keep `.env.local` private. For GitHub, Vercel, or another deployment host, add these same values through that service's environment variable settings instead of committing them.
+
+## Local SQLite database
 
 The local SQLite database lives at:
 
@@ -39,6 +41,7 @@ lib/data/app.sqlite
 ```
 
 SQLite may also create `lib/data/app.sqlite-wal` and `lib/data/app.sqlite-shm` while the app is running. These local database files are ignored by Git.
+Everything under `lib/data` is treated as local runtime data except `lib/data/.gitkeep`, so generated data will not be pushed to GitHub.
 
 Database setup is intentionally simple:
 
