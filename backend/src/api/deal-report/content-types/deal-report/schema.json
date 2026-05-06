@@ -1,0 +1,28 @@
+{
+  "kind": "collectionType",
+  "collectionName": "deal_reports",
+  "info": {
+    "singularName": "deal-report",
+    "pluralName": "deal-reports",
+    "displayName": "Deal Report"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "deal": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::deal.deal",
+      "inversedBy": "reports"
+    },
+    "viewerId": {
+      "type": "string",
+      "required": true
+    },
+    "reason": {
+      "type": "string",
+      "required": true
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "kind": "collectionType",
+  "collectionName": "deals",
+  "info": {
+    "singularName": "deal",
+    "pluralName": "deals",
+    "displayName": "Deal"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "url": {
+      "type": "text",
+      "required": true
+    },
+    "price": {
+      "type": "decimal",
+      "required": true
+    },
+    "originalPrice": {
+      "type": "decimal"
+    },
+    "store": {
+      "type": "string",
+      "required": true
+    },
+    "category": {
+      "type": "string",
+      "required": true
+    },
+    "subCategory": {
+      "type": "string"
+    },
+    "description": {
+      "type": "text",
+      "required": true
+    },
+    "imageUrl": {
+      "type": "text"
+    },
+    "uploadedImageUrl": {
+      "type": "text"
+    },
+    "imageGalleryUrls": {
+      "type": "json"
+    },
+    "score": {
+      "type": "integer",
+      "default": 0
+    },
+    "moderationStatus": {
+      "type": "enumeration",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending",
+      "required": true
+    },
+    "moderationReason": {
+      "type": "string"
+    },
+    "isExpired": {
+      "type": "boolean",
+      "default": false
+    },
+    "expiredAt": {
+      "type": "datetime"
+    },
+    "duplicateOfDealId": {
+      "type": "string"
+    },
+    "duplicateReason": {
+      "type": "text"
+    },
+    "reportCount": {
+      "type": "integer",
+      "default": 0
+    },
+    "authorUserId": {
+      "type": "string"
+    },
+    "authorEmail": {
+      "type": "email"
+    },
+    "authorName": {
+      "type": "string"
+    },
+    "comments": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::comment.comment",
+      "mappedBy": "deal"
+    },
+    "votes": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::deal-vote.deal-vote",
+      "mappedBy": "deal"
+    },
+    "reports": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::deal-report.deal-report",
+      "mappedBy": "deal"
+    }
+  }
+}

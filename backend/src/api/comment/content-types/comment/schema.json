@@ -1,0 +1,45 @@
+{
+  "kind": "collectionType",
+  "collectionName": "comments",
+  "info": {
+    "singularName": "comment",
+    "pluralName": "comments",
+    "displayName": "Comment"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "deal": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::deal.deal",
+      "inversedBy": "comments"
+    },
+    "parentId": {
+      "type": "string"
+    },
+    "authorViewerId": {
+      "type": "string"
+    },
+    "authorName": {
+      "type": "string",
+      "required": true
+    },
+    "body": {
+      "type": "text",
+      "required": true
+    },
+    "likeCount": {
+      "type": "integer",
+      "default": 0
+    },
+    "likedBy": {
+      "type": "json"
+    },
+    "test": {
+      "type": "text"
+    }
+  }
+}

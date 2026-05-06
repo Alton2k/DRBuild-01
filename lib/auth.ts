@@ -1,20 +1,62 @@
 import "server-only";
 
-import type { User } from "@supabase/supabase-js";
-import { isSupabaseConfigured } from "./supabase/config";
-import { createClient } from "./supabase/server";
+import { cookies } from "next/headers";
+import { getStrapiUrl } from "./strapi";
 
-export async function getCurrentUser(): Promise<User | null> {
-  if (!isSupabaseConfigured()) {
+export const strapiAuthCookieName = "dealmy_strapi_jwt";
+
+export interface AppUser {
+  id: string;
+  email?: string;
+  user_metadata: {
+    name?: string;
+    full_name?: string;
+  };
+}
+
+type StrapiMeResponse = {
+  id: number;
+  username?: string;
+  email?: string;
+};
+
+export async function getStrapiJwt() {
+  return (await cookies()).get(strapiAuthCookieName)?.value ?? "";
+}
+
+export async function getCurrentUser(): Promise<AppUser | null> {
+  const jwt = await getStrapiJwt();
+
+  if (!jwt) {
     return null;
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const response = await fetch(`${getStrapiUrl()}/api/users/me`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${jwt}`,
+      },
+      cache: "no-store",
+    });
 
-  return user;
+    if (!response.ok) {
+      return null;
+    }
+
+    const user = (await response.json()) as StrapiMeResponse;
+
+    return {
+      id: String(user.id),
+      email: user.email,
+      user_metadata: {
+        name: user.username ?? user.email,
+        full_name: user.username ?? user.email,
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function requireCurrentUser() {
@@ -34,14 +76,10 @@ export function getAdminEmails() {
     .filter(Boolean);
 }
 
-export function isAdminUser(user: User | null) {
+export function isAdminUser(user: AppUser | null) {
   const email = user?.email?.toLowerCase();
 
-  if (!email) {
-    return false;
-  }
-
-  return getAdminEmails().includes(email);
+  return Boolean(email && getAdminEmails().includes(email));
 }
 
 export async function requireAdminUser() {

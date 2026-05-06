@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import {
   emailAuthAction,
-  googleSignInAction,
   type AuthActionState,
   type AuthMode,
 } from "./actions";
@@ -24,6 +23,7 @@ export default function AuthForm({
   setupMessage?: string;
 }) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [showPassword, setShowPassword] = useState(false);
   const action = useMemo(() => emailAuthAction.bind(null, mode), [mode]);
   const [state, formAction, isPending] = useActionState(action, initialState);
   const isSignup = mode === "signup";
@@ -63,25 +63,7 @@ export default function AuthForm({
         </div>
       ) : null}
 
-      <form action={googleSignInAction} className="mt-6">
-        <input type="hidden" name="next" value={next} />
-        <button
-          type="submit"
-          className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50"
-        >
-          Continue with Google
-        </button>
-      </form>
-
-      <div className="my-6 flex items-center gap-3">
-        <div className="h-px flex-1 bg-slate-200" />
-        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          or
-        </span>
-        <div className="h-px flex-1 bg-slate-200" />
-      </div>
-
-      <form action={formAction} className="space-y-4">
+      <form action={formAction} className="mt-6 space-y-4">
         <input type="hidden" name="next" value={next} />
         <label className="block space-y-2">
           <span className="text-sm font-semibold text-slate-900">Email</span>
@@ -97,15 +79,56 @@ export default function AuthForm({
 
         <label className="block space-y-2">
           <span className="text-sm font-semibold text-slate-900">Password</span>
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={6}
-            autoComplete={isSignup ? "new-password" : "current-password"}
-            className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-            placeholder="At least 6 characters"
-          />
+          <span className="relative block">
+            <input
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              minLength={6}
+              autoComplete={isSignup ? "new-password" : "current-password"}
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              placeholder="At least 6 characters"
+            />
+            <button
+              type="button"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((current) => !current)}
+              className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+            >
+              {showPassword ? (
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                >
+                  <path d="m2 2 20 20" />
+                  <path d="M10.58 10.58a2 2 0 0 0 2.83 2.83" />
+                  <path d="M9.88 4.24A10.8 10.8 0 0 1 12 4c5 0 9 4 10 8a11.8 11.8 0 0 1-2.39 4.36" />
+                  <path d="M6.61 6.61A11.8 11.8 0 0 0 2 12c1 4 5 8 10 8a10.9 10.9 0 0 0 5.39-1.39" />
+                </svg>
+              ) : (
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                >
+                  <path d="M2 12s4-8 10-8 10 8 10 8-4 8-10 8S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+          </span>
         </label>
 
         <button

@@ -36,6 +36,33 @@ export interface DuplicateDealCheckResult {
 const commentViewerCookieName = "dealmy_comment_viewer_id";
 const dealViewerCookieName = "dealmy_deal_viewer_id";
 const trustedAuthorApprovedDealThreshold = 3;
+const suspiciousShortDescriptionLength = 40;
+const suspiciousTitleLength = 12;
+const blockedDealTerms = [
+  "18+",
+  "adult",
+  "casino",
+  "gambling",
+  "nude",
+  "porn",
+  "sex",
+  "xxx",
+];
+const suspiciousDealTerms = [
+  "free money",
+  "guaranteed profit",
+  "miracle cure",
+  "no risk",
+  "weight loss pill",
+];
+const suspiciousHostFragments = [
+  "bit.ly",
+  "cutt.ly",
+  "is.gd",
+  "tinyurl.com",
+  "t.me",
+  "telegram.me",
+];
 
 function getString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -98,15 +125,116 @@ function parsePositiveNumber(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function getDealText(input: {
+  title: string;
+  description: string;
+  store: string;
+  category: string;
+  subCategory: string;
+}) {
+  return [
+    input.title,
+    input.description,
+    input.store,
+    input.category,
+    input.subCategory,
+  ].join(" ").toLowerCase();
+}
+
+function getUrlHostname(value: string) {
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function getAutomatedModerationSignals(input: {
+  title: string;
+  description: string;
+  store: string;
+  category: string;
+  subCategory: string;
+  url: string;
+  hasImage: boolean;
+}) {
+  const text = getDealText(input);
+  const hostname = getUrlHostname(input.url);
+  const signals: string[] = [];
+  const hasBlockedTerm = blockedDealTerms.some((term) => text.includes(term));
+  const hasSuspiciousTerm = suspiciousDealTerms.some((term) => text.includes(term));
+  const hasSuspiciousHost = suspiciousHostFragments.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+
+  if (hasBlockedTerm) {
+    signals.push("adult_or_restricted_keyword");
+  }
+
+  if (hasSuspiciousTerm) {
+    signals.push("suspicious_marketing_claim");
+  }
+
+  if (hasSuspiciousHost) {
+    signals.push("shortened_or_chat_link");
+  }
+
+  if (input.title.trim().length < suspiciousTitleLength) {
+    signals.push("short_title");
+  }
+
+  if (input.description.trim().length < suspiciousShortDescriptionLength) {
+    signals.push("short_description");
+  }
+
+  if (!input.hasImage) {
+    signals.push("missing_product_image");
+  }
+
+  return signals;
+}
+
+function getPrimaryModerationSignal(signals: string[]) {
+  if (signals.includes("adult_or_restricted_keyword")) {
+    return "restricted_content_manual_review";
+  }
+
+  if (signals.includes("shortened_or_chat_link")) {
+    return "suspicious_link_manual_review";
+  }
+
+  if (signals.includes("suspicious_marketing_claim")) {
+    return "suspicious_claim_manual_review";
+  }
+
+  if (signals.includes("missing_product_image")) {
+    return "missing_image_manual_review";
+  }
+
+  if (signals.length > 0) {
+    return "quality_manual_review";
+  }
+
+  return "";
+}
+
 async function getInitialDealModeration(input: {
   authorUserId: string;
   isAdmin: boolean;
   hasDuplicateWarning: boolean;
+  automatedSignals: string[];
 }) {
   if (input.hasDuplicateWarning) {
     return {
       status: "pending" as DealStatus,
       reason: "duplicate_manual_review",
+    };
+  }
+
+  const primarySignal = getPrimaryModerationSignal(input.automatedSignals);
+
+  if (primarySignal) {
+    return {
+      status: "pending" as DealStatus,
+      reason: primarySignal,
     };
   }
 
@@ -256,36 +384,57 @@ export async function createDealAction(
   const uploadedImageUrl = imageGalleryUrls[0] ?? normalizeOptionalImageUrl(rawUploadedImageUrl, url);
   const imageUrl = uploadedImageUrl || normalizeOptionalImageUrl(rawImageUrl, url);
   const duplicateMatch = await findDuplicateDeal({ title, url, store });
+  const automatedSignals = getAutomatedModerationSignals({
+    title,
+    description,
+    store,
+    category,
+    subCategory,
+    url,
+    hasImage: Boolean(imageUrl || uploadedImageUrl || imageGalleryUrls.length > 0),
+  });
   const moderation = await getInitialDealModeration({
     authorUserId: user.id,
     isAdmin: isAdminUser(user),
     hasDuplicateWarning: Boolean(duplicateMatch),
+    automatedSignals,
   });
 
-  const deal = await createDeal({
-    title,
-    url,
-    price,
-    originalPrice,
-    store,
-    category,
-    subCategory,
-    description,
-    imageUrl,
-    uploadedImageUrl,
-    imageGalleryUrls,
-    status: moderation.status,
-    moderationReason: moderation.reason,
-    duplicateOfDealId: duplicateMatch?.deal.id,
-    duplicateReason: duplicateMatch?.reason,
-    authorUserId: user.id,
-    authorEmail: user.email ?? "",
-    authorName:
-      (typeof user.user_metadata.name === "string" && user.user_metadata.name) ||
-      (typeof user.user_metadata.full_name === "string" && user.user_metadata.full_name) ||
-      user.email ||
-      "community",
-  });
+  let deal;
+  try {
+    deal = await createDeal({
+      title,
+      url,
+      price,
+      originalPrice,
+      store,
+      category,
+      subCategory,
+      description,
+      imageUrl,
+      uploadedImageUrl,
+      imageGalleryUrls,
+      status: moderation.status,
+      moderationReason: moderation.reason,
+      duplicateOfDealId: duplicateMatch?.deal.id,
+      duplicateReason: duplicateMatch?.reason || automatedSignals.join(", "),
+      authorUserId: user.id,
+      authorEmail: user.email ?? "",
+      authorName:
+        (typeof user.user_metadata.name === "string" && user.user_metadata.name) ||
+        (typeof user.user_metadata.full_name === "string" && user.user_metadata.full_name) ||
+        user.email ||
+        "community",
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Could not create the deal in Strapi.",
+    };
+  }
 
   revalidatePath("/");
   revalidatePath("/admin");
@@ -297,6 +446,8 @@ export async function createDealAction(
         ? "Deal posted and published automatically."
         : duplicateMatch
           ? "Deal submitted for moderation with a possible duplicate warning for admins to review."
+          : automatedSignals.length > 0
+            ? "Deal submitted for moderation because automated checks found something for admins to review."
           : "Deal submitted for moderation. Approve it in admin to publish it.",
     dealId: deal.id,
   };

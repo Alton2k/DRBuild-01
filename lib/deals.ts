@@ -1,6 +1,12 @@
 import "server-only";
 
-import { getDb } from "./db";
+import {
+  getStrapiEntityFields,
+  getStrapiEntityId,
+  strapiRequest,
+  type StrapiListResponse,
+  type StrapiSingleResponse,
+} from "./strapi";
 
 export type DealStatus = "pending" | "approved" | "rejected";
 export type DealVoteDirection = "up" | "down";
@@ -67,613 +73,328 @@ export interface ApprovedDealFilters {
   feed?: DealFeedMode;
 }
 
-interface DealRow {
-  id: string;
-  title: string;
-  url: string;
-  price: number;
-  original_price: number | null;
-  store: string;
-  category: string;
-  sub_category: string;
-  description: string;
-  image_url: string;
-  uploaded_image_url: string;
-  image_gallery_urls: string;
-  score: number;
-  status: DealStatus;
-  moderation_reason: string;
-  is_expired: 0 | 1;
-  expired_at: string | null;
-  duplicate_of_deal_id: string | null;
-  duplicate_reason: string;
-  report_count: number;
-  author_user_id: string | null;
-  author_email: string;
-  author_name: string;
-  created_at: string;
+type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "status"> & {
+  originalPrice?: number | string | null;
+  createdAt?: string;
+  price: number | string;
+  moderationStatus?: DealStatus;
+};
+
+function toNumber(value: number | string | null | undefined) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-const dealColumns = `
-  d.id,
-  d.title,
-  d.url,
-  d.price,
-  d.original_price,
-  d.store,
-  d.category,
-  d.sub_category,
-  d.description,
-  d.image_url,
-  d.uploaded_image_url,
-  d.image_gallery_urls,
-  (
-    SELECT COUNT(*)
-    FROM deal_votes dv
-    WHERE dv.deal_id = d.id AND dv.direction = 'up'
-  ) - (
-    SELECT COUNT(*)
-    FROM deal_votes dv
-    WHERE dv.deal_id = d.id AND dv.direction = 'down'
-  ) AS score,
-  d.status,
-  d.moderation_reason,
-  d.is_expired,
-  d.expired_at,
-  d.duplicate_of_deal_id,
-  d.duplicate_reason,
-  (
-    SELECT COUNT(*)
-    FROM deal_reports dr
-    WHERE dr.deal_id = d.id
-  ) AS report_count,
-  d.author_user_id,
-  d.author_email,
-  d.author_name,
-  d.created_at
-`;
+function toOptionalNumber(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
 
-function rowToDeal(row: DealRow): Deal {
-  const imageGalleryUrls = parseImageGalleryUrls(row.image_gallery_urls);
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toDeal(entity: Parameters<typeof getStrapiEntityFields<StrapiDeal>>[0]): Deal {
+  const fields = getStrapiEntityFields(entity);
 
   return {
-    id: row.id,
-    title: row.title,
-    url: row.url,
-    price: row.price,
-    originalPrice: row.original_price,
-    store: row.store,
-    category: row.category,
-    subCategory: row.sub_category,
-    description: row.description,
-    imageUrl: row.image_url,
-    uploadedImageUrl: row.uploaded_image_url,
-    imageGalleryUrls,
-    score: row.score,
-    status: row.status,
-    moderationReason: row.moderation_reason,
-    isExpired: Boolean(row.is_expired),
-    ...(row.expired_at ? { expiredAt: row.expired_at } : {}),
-    ...(row.duplicate_of_deal_id ? { duplicateOfDealId: row.duplicate_of_deal_id } : {}),
-    ...(row.duplicate_reason ? { duplicateReason: row.duplicate_reason } : {}),
-    reportCount: row.report_count,
-    ...(row.author_user_id ? { authorUserId: row.author_user_id } : {}),
-    authorEmail: row.author_email,
-    authorName: row.author_name,
-    createdAt: row.created_at,
+    id: getStrapiEntityId(entity),
+    title: fields.title ?? "",
+    url: fields.url ?? "",
+    price: toNumber(fields.price),
+    originalPrice: toOptionalNumber(fields.originalPrice),
+    store: fields.store ?? "",
+    category: fields.category ?? "",
+    subCategory: fields.subCategory ?? "",
+    description: fields.description ?? "",
+    imageUrl: fields.imageUrl ?? "",
+    uploadedImageUrl: fields.uploadedImageUrl ?? "",
+    imageGalleryUrls: Array.isArray(fields.imageGalleryUrls) ? fields.imageGalleryUrls : [],
+    score: fields.score ?? 0,
+    status: fields.moderationStatus ?? "pending",
+    moderationReason: fields.moderationReason ?? "",
+    isExpired: Boolean(fields.isExpired),
+    ...(fields.expiredAt ? { expiredAt: fields.expiredAt } : {}),
+    ...(fields.duplicateOfDealId ? { duplicateOfDealId: fields.duplicateOfDealId } : {}),
+    ...(fields.duplicateReason ? { duplicateReason: fields.duplicateReason } : {}),
+    reportCount: fields.reportCount ?? 0,
+    ...(fields.authorUserId ? { authorUserId: fields.authorUserId } : {}),
+    authorEmail: fields.authorEmail ?? "",
+    authorName: fields.authorName ?? "",
+    createdAt: fields.createdAt ?? new Date().toISOString(),
   };
 }
 
-function parseImageGalleryUrls(value: string) {
+function getDealSort(feed: DealFeedMode = "hot") {
+  if (feed === "new") {
+    return "createdAt:desc";
+  }
+
+  if (feed === "discussed") {
+    return "createdAt:desc";
+  }
+
+  return "score:desc";
+}
+
+function addApprovedFilters(params: URLSearchParams, filters: ApprovedDealFilters) {
+  params.set("filters[moderationStatus][$eq]", "approved");
+  params.set("filters[isExpired][$eq]", "false");
+
+  if (filters.category) {
+    params.set("filters[category][$eqi]", filters.category);
+  }
+
+  if (filters.subCategory) {
+    params.set("filters[subCategory][$eqi]", filters.subCategory);
+  }
+
+  if (filters.q) {
+    params.set("filters[$or][0][title][$containsi]", filters.q);
+    params.set("filters[$or][1][description][$containsi]", filters.q);
+    params.set("filters[$or][2][store][$containsi]", filters.q);
+    params.set("filters[$or][3][category][$containsi]", filters.q);
+    params.set("filters[$or][4][subCategory][$containsi]", filters.q);
+  }
+}
+
+export async function getDeals(): Promise<Deal[]> {
   try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0)
-      : [];
+    const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", {
+      query: new URLSearchParams({ sort: "createdAt:desc" }),
+    });
+
+    return response.data.map(toDeal);
   } catch {
     return [];
   }
 }
 
-function normalizeSearchValue(value: string | undefined) {
-  return value?.trim().toLowerCase() ?? "";
-}
-
-function escapeLikeValue(value: string) {
-  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
-}
-
-function normalizeDealUrl(value: string) {
-  try {
-    const parsed = new URL(value.trim());
-    parsed.hash = "";
-    parsed.protocol = parsed.protocol.toLowerCase();
-    parsed.hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
-
-    const keptParams = Array.from(parsed.searchParams.entries())
-      .filter(([key]) => {
-        const lowerKey = key.toLowerCase();
-        return (
-          !lowerKey.startsWith("utm_") &&
-          !["fbclid", "gclid", "msclkid", "ref", "referrer", "spm"].includes(lowerKey)
-        );
-      })
-      .sort(([firstKey], [secondKey]) => firstKey.localeCompare(secondKey));
-
-    parsed.search = "";
-    for (const [key, paramValue] of keptParams) {
-      parsed.searchParams.append(key, paramValue);
-    }
-
-    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
-    return `${parsed.hostname}${pathname}${parsed.search}`.toLowerCase();
-  } catch {
-    return value.trim().toLowerCase();
-  }
-}
-
-function normalizeStore(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function getTitleTokens(value: string) {
-  const stopWords = new Set([
-    "a",
-    "an",
-    "and",
-    "deal",
-    "for",
-    "free",
-    "in",
-    "myr",
-    "off",
-    "only",
-    "rm",
-    "sale",
-    "the",
-    "with",
-  ]);
-
-  return new Set(
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .split(" ")
-      .filter((token) => token.length > 1 && !stopWords.has(token)),
-  );
-}
-
-function getTokenSimilarity(firstTitle: string, secondTitle: string) {
-  const firstTokens = getTitleTokens(firstTitle);
-  const secondTokens = getTitleTokens(secondTitle);
-
-  if (firstTokens.size === 0 || secondTokens.size === 0) {
-    return 0;
-  }
-
-  let shared = 0;
-  for (const token of firstTokens) {
-    if (secondTokens.has(token)) {
-      shared += 1;
-    }
-  }
-
-  return (2 * shared) / (firstTokens.size + secondTokens.size);
-}
-
-function getApprovedDealsOrderBy(feed: DealFeedMode = "hot") {
-  if (feed === "new") {
-    return "d.created_at DESC";
-  }
-
-  if (feed === "discussed") {
-    return `
-      (
-        SELECT COUNT(*)
-        FROM comments c
-        WHERE c.deal_id = d.id
-      ) DESC,
-      d.created_at DESC
-    `;
-  }
-
-  return "score DESC, d.created_at DESC";
-}
-
-function getDealByIdSync(id: string) {
-  const row = getDb()
-    .prepare(`SELECT ${dealColumns} FROM deals d WHERE d.id = ?`)
-    .get(id) as DealRow | undefined;
-
-  return row ? rowToDeal(row) : null;
-}
-
-export async function getDeals() {
-  const rows = getDb()
-    .prepare(`SELECT ${dealColumns} FROM deals d ORDER BY d.created_at DESC`)
-    .all() as DealRow[];
-
-  return rows.map(rowToDeal);
-}
-
 export async function getAuthorDealModerationStats(authorUserId: string) {
-  const row = getDb()
-    .prepare(`
-      SELECT
-        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
-        COUNT(*) AS total_count
-      FROM deals
-      WHERE author_user_id = ?
-    `)
-    .get(authorUserId) as {
-    approved_count: number | null;
-    rejected_count: number | null;
-    total_count: number;
-  };
+  const deals = await getDeals();
+  const authorDeals = deals.filter((deal) => deal.authorUserId === authorUserId);
 
   return {
-    approvedCount: row.approved_count ?? 0,
-    rejectedCount: row.rejected_count ?? 0,
-    totalCount: row.total_count,
+    approvedCount: authorDeals.filter((deal) => deal.status === "approved").length,
+    rejectedCount: authorDeals.filter((deal) => deal.status === "rejected").length,
+    totalCount: authorDeals.length,
   };
 }
 
-export async function getApprovedDeals(filters: ApprovedDealFilters = {}) {
-  const where = ["d.status = 'approved'", "d.is_expired = 0"];
-  const params: Record<string, string> = {};
-  const orderBy = getApprovedDealsOrderBy(filters.feed);
+export async function getApprovedDeals(filters: ApprovedDealFilters = {}): Promise<Deal[]> {
+  try {
+    const query = new URLSearchParams();
+    addApprovedFilters(query, filters);
+    query.set("sort", getDealSort(filters.feed));
 
-  const category = normalizeSearchValue(filters.category);
-  const subCategory = normalizeSearchValue(filters.subCategory);
-  const query = normalizeSearchValue(filters.q);
+    const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query });
 
-  if (category) {
-    where.push("lower(d.category) = @category");
-    params.category = category;
+    return response.data.map(toDeal);
+  } catch {
+    return [];
   }
-
-  if (subCategory) {
-    where.push("lower(d.sub_category) = @subCategory");
-    params.subCategory = subCategory;
-  }
-
-  if (query) {
-    where.push(`(
-      lower(d.title) LIKE @query ESCAPE '\\' OR
-      lower(d.description) LIKE @query ESCAPE '\\' OR
-      lower(d.store) LIKE @query ESCAPE '\\' OR
-      lower(d.category) LIKE @query ESCAPE '\\' OR
-      lower(d.sub_category) LIKE @query ESCAPE '\\'
-    )`);
-    params.query = `%${escapeLikeValue(query)}%`;
-  }
-
-  const rows = getDb()
-    .prepare(`
-      SELECT ${dealColumns}
-      FROM deals d
-      WHERE ${where.join(" AND ")}
-      ORDER BY ${orderBy}
-    `)
-    .all(params) as DealRow[];
-
-  return rows.map(rowToDeal);
 }
 
-export async function searchApprovedDeals(filters: ApprovedDealFilters) {
+export async function searchApprovedDeals(filters: ApprovedDealFilters): Promise<Deal[]> {
   return getApprovedDeals(filters);
 }
 
-export async function getDealById(id: string) {
-  return getDealByIdSync(id);
+export async function getDealById(id: string): Promise<Deal | null> {
+  try {
+    const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`);
+
+    return response.data ? toDeal(response.data) : null;
+  } catch {
+    return null;
+  }
 }
 
-export async function getDealVoteDirection(id: string, viewerId: string | undefined) {
-  if (!viewerId) {
+export async function getDealVoteDirection(
+  id: string,
+  viewerId: string | undefined,
+): Promise<DealVoteDirection | null> {
+  void id;
+  void viewerId;
+
+  return null;
+}
+
+export async function getDealVoteDirectionsByDealIds(dealIds: string[], viewerId: string | undefined) {
+  void viewerId;
+
+  return new Map(dealIds.map((dealId) => [dealId, null as DealVoteDirection | null]));
+}
+
+export async function findDuplicateDeal(
+  input: Pick<NewDealInput, "title" | "url" | "store">,
+): Promise<DuplicateDealMatch | null> {
+  const query = new URLSearchParams({
+    "filters[url][$eq]": input.url,
+    "filters[moderationStatus][$ne]": "rejected",
+    "pagination[pageSize]": "1",
+  });
+  const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query }).catch(() => null);
+  const match = response?.data[0];
+
+  if (!match) {
     return null;
   }
 
-  const row = getDb()
-    .prepare("SELECT direction FROM deal_votes WHERE deal_id = ? AND viewer_id = ?")
-    .get(id, viewerId) as { direction: DealVoteDirection } | undefined;
+  const deal = toDeal(match);
 
-  return row?.direction ?? null;
-}
-
-export async function getDealVoteDirectionsByDealIds(
-  dealIds: string[],
-  viewerId: string | undefined,
-) {
-  const requestedDealIds = Array.from(new Set(dealIds));
-  const votes = new Map<string, DealVoteDirection | null>();
-
-  for (const dealId of requestedDealIds) {
-    votes.set(dealId, null);
-  }
-
-  if (!viewerId || requestedDealIds.length === 0) {
-    return votes;
-  }
-
-  const placeholders = requestedDealIds.map(() => "?").join(", ");
-  const rows = getDb()
-    .prepare(`
-      SELECT deal_id, direction
-      FROM deal_votes
-      WHERE viewer_id = ? AND deal_id IN (${placeholders})
-    `)
-    .all(viewerId, ...requestedDealIds) as {
-    deal_id: string;
-    direction: DealVoteDirection;
-  }[];
-
-  for (const row of rows) {
-    votes.set(row.deal_id, row.direction);
-  }
-
-  return votes;
-}
-
-export async function findDuplicateDeal(input: Pick<NewDealInput, "title" | "url" | "store">) {
-  const normalizedUrl = normalizeDealUrl(input.url);
-  const normalizedStore = normalizeStore(input.store);
-  const rows = getDb()
-    .prepare(`
-      SELECT ${dealColumns}
-      FROM deals d
-      WHERE d.status <> 'rejected' AND d.is_expired = 0
-      ORDER BY d.created_at DESC
-    `)
-    .all() as DealRow[];
-
-  let bestMatch: DuplicateDealMatch | null = null;
-
-  for (const row of rows) {
-    const deal = rowToDeal(row);
-    const sameUrl = normalizeDealUrl(deal.url) === normalizedUrl;
-    const titleSimilarity = getTokenSimilarity(input.title, deal.title);
-    const sameStore = normalizeStore(deal.store) === normalizedStore;
-
-    let score = 0;
-    let reason = "";
-
-    if (sameUrl) {
-      score = 1;
-      reason = "Someone already posted this product. Try sharing a different deal.";
-    } else if (titleSimilarity >= 0.82) {
-      score = titleSimilarity;
-      reason = `Very similar title to "${deal.title}".`;
-    } else if (sameStore && titleSimilarity >= 0.68) {
-      score = titleSimilarity;
-      reason = `Same store and similar title to "${deal.title}".`;
-    }
-
-    if (reason && (!bestMatch || score > bestMatch.score)) {
-      bestMatch = {
-        deal: {
-          id: deal.id,
-          title: deal.title,
-          store: deal.store,
-          url: deal.url,
-          status: deal.status,
-          createdAt: deal.createdAt,
-        },
-        reason,
-        score,
-      };
-    }
-  }
-
-  return bestMatch;
-}
-
-export async function createDeal(input: NewDealInput) {
-  const now = new Date().toISOString();
-  const deal: Deal = {
-    id: crypto.randomUUID(),
-    title: input.title,
-    url: input.url,
-    price: input.price,
-    originalPrice: input.originalPrice ?? null,
-    store: input.store,
-    category: input.category,
-    subCategory: input.subCategory ?? "",
-    description: input.description,
-    imageUrl: input.imageUrl ?? "",
-    uploadedImageUrl: input.uploadedImageUrl ?? "",
-    imageGalleryUrls: input.imageGalleryUrls ?? [],
-    score: 0,
-    status: input.status ?? "pending",
-    moderationReason: input.moderationReason ?? "new_user_manual_review",
-    isExpired: false,
-    ...(input.duplicateOfDealId ? { duplicateOfDealId: input.duplicateOfDealId } : {}),
-    ...(input.duplicateReason ? { duplicateReason: input.duplicateReason } : {}),
-    reportCount: 0,
-    ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
-    authorEmail: input.authorEmail ?? "",
-    authorName: input.authorName ?? "",
-    createdAt: now,
+  return {
+    deal: {
+      id: deal.id,
+      title: deal.title,
+      store: deal.store,
+      url: deal.url,
+      status: deal.status,
+      createdAt: deal.createdAt,
+    },
+    reason: "Someone already posted this product. Try sharing a different deal.",
+    score: 1,
   };
+}
 
-  getDb()
-    .prepare(`
-      INSERT INTO deals (
-        id,
-        title,
-        url,
-        price,
-        original_price,
-        store,
-        category,
-        sub_category,
-        description,
-        image_url,
-        uploaded_image_url,
-        image_gallery_urls,
-        score,
-        status,
-        moderation_reason,
-        is_expired,
-        expired_at,
-        duplicate_of_deal_id,
-        duplicate_reason,
-        report_count,
-        author_user_id,
-        author_email,
-        author_name,
-        created_at
-      ) VALUES (
-        @id,
-        @title,
-        @url,
-        @price,
-        @originalPrice,
-        @store,
-        @category,
-        @subCategory,
-        @description,
-        @imageUrl,
-        @uploadedImageUrl,
-        @imageGalleryUrls,
-        @score,
-        @status,
-        @moderationReason,
-        @isExpired,
-        @expiredAt,
-        @duplicateOfDealId,
-        @duplicateReason,
-        @reportCount,
-        @authorUserId,
-        @authorEmail,
-        @authorName,
-        @createdAt
-      )
-    `)
-    .run({
-      ...deal,
-      isExpired: 0,
-      expiredAt: null,
-      duplicateOfDealId: input.duplicateOfDealId ?? null,
-      duplicateReason: input.duplicateReason ?? "",
-      authorUserId: input.authorUserId ?? null,
-      imageGalleryUrls: JSON.stringify(input.imageGalleryUrls ?? []),
-    });
+export async function createDeal(input: NewDealInput): Promise<Deal> {
+  const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>("/api/deals", {
+    method: "POST",
+    requireToken: true,
+    body: {
+      data: {
+        title: input.title,
+        url: input.url,
+        price: input.price,
+        originalPrice: input.originalPrice ?? null,
+        store: input.store,
+        category: input.category,
+        subCategory: input.subCategory ?? "",
+        description: input.description,
+        imageUrl: input.imageUrl ?? "",
+        uploadedImageUrl: input.uploadedImageUrl ?? "",
+        imageGalleryUrls: input.imageGalleryUrls ?? [],
+        score: 0,
+        moderationStatus: input.status ?? "pending",
+        moderationReason: input.moderationReason ?? "new_user_manual_review",
+        isExpired: false,
+        duplicateOfDealId: input.duplicateOfDealId ?? "",
+        duplicateReason: input.duplicateReason ?? "",
+        reportCount: 0,
+        authorUserId: input.authorUserId ?? "",
+        authorEmail: input.authorEmail ?? "",
+        authorName: input.authorName ?? "",
+      },
+    },
+  });
 
-  return deal;
+  if (!response.data) {
+    throw new Error("Strapi did not return the created deal.");
+  }
+
+  return toDeal(response.data);
 }
 
 export async function updateDealStatus(id: string, status: DealStatus, moderationReason = "admin_manual_update") {
-  const result = getDb()
-    .prepare("UPDATE deals SET status = ?, moderation_reason = ? WHERE id = ?")
-    .run(status, moderationReason, id);
+  const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`, {
+    method: "PUT",
+    requireToken: true,
+    body: {
+      data: {
+        moderationStatus: status,
+        moderationReason,
+      },
+    },
+  });
 
-  return result.changes > 0 ? getDealByIdSync(id) : null;
+  return response.data ? toDeal(response.data) : null;
 }
 
 export async function markDealExpired(id: string) {
-  const expiredAt = new Date().toISOString();
-  const result = getDb()
-    .prepare("UPDATE deals SET is_expired = 1, expired_at = ? WHERE id = ?")
-    .run(expiredAt, id);
+  const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`, {
+    method: "PUT",
+    requireToken: true,
+    body: {
+      data: {
+        isExpired: true,
+        expiredAt: new Date().toISOString(),
+      },
+    },
+  });
 
-  return result.changes > 0 ? getDealByIdSync(id) : null;
+  return response.data ? toDeal(response.data) : null;
 }
 
 export async function reportDeal(id: string, viewerId: string, reason: string) {
-  const db = getDb();
-  const deal = getDealByIdSync(id);
+  const deal = await getDealById(id);
 
   if (!deal) {
     return null;
   }
 
-  const result = db
-    .prepare(`
-      INSERT OR IGNORE INTO deal_reports (
-        id,
-        deal_id,
-        viewer_id,
+  await strapiRequest("/api/deal-reports", {
+    method: "POST",
+    requireToken: true,
+    body: {
+      data: {
+        deal: id,
+        viewerId,
         reason,
-        created_at
-      ) VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-      )
-    `)
-    .run(crypto.randomUUID(), id, viewerId, reason, new Date().toISOString());
+      },
+    },
+  });
 
-  return {
-    deal: getDealByIdSync(id) ?? deal,
-    didReport: result.changes > 0,
-  };
+  return { deal, didReport: true };
 }
 
 export async function restoreReportedDeal(id: string) {
-  const db = getDb();
-  const restoreTransaction = db.transaction((dealId: string) => {
-    const result = db
-      .prepare(`
-      UPDATE deals
-      SET status = 'approved',
-          moderation_reason = 'admin_restored_reported',
-          is_expired = 0,
-          expired_at = NULL,
-          report_count = 0
-      WHERE id = ?
-    `)
-      .run(dealId);
-
-    if (result.changes > 0) {
-      db.prepare("DELETE FROM deal_reports WHERE deal_id = ?").run(dealId);
-    }
-
-    return result.changes;
+  const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`, {
+    method: "PUT",
+    requireToken: true,
+    body: {
+      data: {
+        moderationStatus: "approved",
+        moderationReason: "admin_restored_reported",
+        isExpired: false,
+        expiredAt: null,
+        reportCount: 0,
+      },
+    },
   });
 
-  return restoreTransaction(id) > 0 ? getDealByIdSync(id) : null;
+  return response.data ? toDeal(response.data) : null;
 }
 
 export async function voteDeal(id: string, viewerId: string, direction: DealVoteDirection) {
-  const db = getDb();
-  const deal = getDealByIdSync(id);
+  const deal = await getDealById(id);
 
   if (!deal) {
     return null;
   }
 
-  const result = db
-    .prepare(`
-      INSERT INTO deal_votes (
-        id,
-        deal_id,
-        viewer_id,
+  await strapiRequest("/api/deal-votes", {
+    method: "POST",
+    requireToken: true,
+    body: {
+      data: {
+        deal: id,
+        viewerId,
         direction,
-        created_at
-      ) VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-      )
-      ON CONFLICT (deal_id, viewer_id) DO UPDATE
-      SET direction = excluded.direction
-      WHERE deal_votes.direction <> excluded.direction
-    `)
-    .run(crypto.randomUUID(), id, viewerId, direction, new Date().toISOString());
+      },
+    },
+  });
 
   return {
-    deal: getDealByIdSync(id) ?? deal,
-    didVote: result.changes > 0,
+    deal,
+    didVote: true,
+    viewerVote: direction,
   };
 }
 
 export async function deleteDeal(id: string) {
-  const result = getDb().prepare("DELETE FROM deals WHERE id = ?").run(id);
+  await strapiRequest(`/api/deals/${id}`, {
+    method: "DELETE",
+    requireToken: true,
+  });
 
-  return result.changes > 0;
+  return true;
 }

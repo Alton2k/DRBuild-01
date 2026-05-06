@@ -1,15 +1,24 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { createClient } from "@/lib/supabase/server";
+import { getStrapiUrl } from "@/lib/strapi";
+import { strapiAuthCookieName } from "@/lib/auth";
 
 export type AuthMode = "login" | "signup";
 
 export type AuthActionState = {
   ok: boolean;
   message: string;
+};
+
+type StrapiAuthResponse = {
+  jwt: string;
+  user: {
+    id: number;
+    username?: string;
+    email?: string;
+  };
 };
 
 function getString(formData: FormData, key: string) {
@@ -22,9 +31,70 @@ function getAuthRedirectPath(formData: FormData) {
   return next.startsWith("/") && !next.startsWith("//") ? next : "/";
 }
 
-async function getOrigin() {
-  const headerStore = await headers();
-  return headerStore.get("origin") ?? "http://localhost:3000";
+function getUsername(email: string) {
+  return email.split("@")[0]?.replace(/[^a-z0-9_-]/gi, "") || "member";
+}
+
+async function strapiAuthRequest(mode: AuthMode, email: string, password: string) {
+  const endpoint = mode === "signup" ? "/api/auth/local/register" : "/api/auth/local";
+  const body =
+    mode === "signup"
+      ? {
+          username: getUsername(email),
+          email,
+          password,
+        }
+      : {
+          identifier: email,
+          password,
+        };
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${getStrapiUrl()}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false as const,
+      message: "Could not connect to Strapi. Start the backend with npm.cmd run backend:dev.",
+    };
+  }
+
+  const responseBody = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    return {
+      ok: false as const,
+      message:
+        typeof responseBody?.error?.message === "string"
+          ? responseBody.error.message
+          : mode === "signup"
+            ? "Could not create this account."
+            : "Invalid email or password.",
+    };
+  }
+
+  const authData = responseBody as StrapiAuthResponse;
+
+  if (!authData.jwt) {
+    return {
+      ok: false as const,
+      message: "Strapi did not return an auth token.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    data: authData,
+  };
 }
 
 export async function emailAuthAction(
@@ -32,14 +102,7 @@ export async function emailAuthAction(
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  if (!isSupabaseConfigured()) {
-    return {
-      ok: false,
-      message: "Supabase is not configured yet. Add your Supabase URL and publishable key to .env.local.",
-    };
-  }
-
-  const email = getString(formData, "email");
+  const email = getString(formData, "email").toLowerCase();
   const password = getString(formData, "password");
   const next = getAuthRedirectPath(formData);
 
@@ -51,64 +114,29 @@ export async function emailAuthAction(
     return { ok: false, message: "Password must be at least 6 characters." };
   }
 
-  const supabase = await createClient();
-  const origin = await getOrigin();
+  const result = await strapiAuthRequest(mode, email, password);
 
-  if (mode === "signup") {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
-
-    if (error) {
-      return { ok: false, message: error.message };
-    }
-
-    return {
-      ok: true,
-      message: "Account created. Check your email if confirmation is enabled, then sign in.",
-    };
+  if (!result.ok) {
+    return { ok: false, message: result.message };
   }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-  if (error) {
-    return { ok: false, message: error.message };
-  }
+  const cookieStore = await cookies();
+  cookieStore.set(strapiAuthCookieName, result.data.jwt, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 30,
+    path: "/",
+  });
 
   redirect(next);
 }
 
-export async function googleSignInAction(formData: FormData) {
-  if (!isSupabaseConfigured()) {
-    redirect("/auth?message=supabase-not-configured");
-  }
-
-  const supabase = await createClient();
-  const origin = await getOrigin();
-  const next = getAuthRedirectPath(formData);
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
-  });
-
-  if (error || !data.url) {
-    redirect(`/auth?message=${encodeURIComponent(error?.message ?? "Could not start Google sign in.")}`);
-  }
-
-  redirect(data.url);
+export async function googleSignInAction() {
+  redirect("/auth?message=google-not-configured");
 }
 
 export async function signOutAction() {
-  if (isSupabaseConfigured()) {
-    const supabase = await createClient();
-    await supabase.auth.signOut();
-  }
-
+  (await cookies()).delete(strapiAuthCookieName);
   redirect("/");
 }

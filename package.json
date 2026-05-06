@@ -4,17 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "frontend:dev": "next dev",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:build": "npm --prefix backend run build",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "db:seed": "node scripts/db/seed.mjs",
-    "db:reset": "node scripts/db/reset.mjs",
-    "db:smoke": "node scripts/db/smoke.mjs"
+    "lint": "eslint"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.105.3",
-    "better-sqlite3": "^12.9.0",
     "next": "16.2.4",
     "playwright": "^1.59.1",
     "react": "19.2.4",
@@ -22,7 +19,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

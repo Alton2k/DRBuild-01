@@ -296,6 +296,7 @@ export default function PostClient() {
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
+  const lastAutoAdvancedUrl = useRef("");
   const serverErrors = actionState.errors ?? {};
   const combinedErrors = { ...serverErrors, ...errors };
   const selectedCategory = getCategoryByName(form.category);
@@ -464,6 +465,23 @@ export default function PostClient() {
   }, [form.url, lastFetchedUrl, runFetchDetails]);
 
   useEffect(() => {
+    const url = form.url.trim();
+
+    if (currentStep !== 0 || !isValidUrl(url) || url === lastAutoAdvancedUrl.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      lastAutoAdvancedUrl.current = url;
+      setErrors((current) => ({ ...current, url: undefined }));
+      setCurrentStep(1);
+      scrollToTop();
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [currentStep, form.url]);
+
+  useEffect(() => {
     const title = form.title.trim();
     const url = form.url.trim();
     const store = form.store.trim();
@@ -527,6 +545,7 @@ export default function PostClient() {
       setImageLoadError("");
       setDetectedType("");
       setDuplicateCheck(null);
+      lastAutoAdvancedUrl.current = "";
       setCategoryTouched(false);
       setSubCategoryTouched(false);
     }, 0);

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import AuthForm from "./AuthForm";
 import type { AuthMode } from "./actions";
 
@@ -35,10 +34,11 @@ export default async function AuthPage({
     redirect(next);
   }
 
-  const setupMessage = !isSupabaseConfigured()
-    ? "Supabase is not configured yet. Create .env.local with NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
-    : params.message === "supabase-not-configured"
-      ? "Supabase is not configured yet."
+  const setupMessage =
+    params.message === "google-not-configured"
+      ? "Google login is not configured yet. Use email and password."
+      : params.message === "email-confirmed"
+        ? "Email verified. You can log in now."
       : undefined;
 
   return (

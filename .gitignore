@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/backend/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -19,6 +20,8 @@
 
 # production
 /build
+/backend/dist
+/backend/.tmp
 
 # misc
 .DS_Store
@@ -40,7 +43,3 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local sqlite data
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal

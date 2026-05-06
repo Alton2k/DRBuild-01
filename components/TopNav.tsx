@@ -7,5 +7,10 @@ import TopNavClient from "./TopNavClient";
 export default async function TopNav() {
   const user = await getCurrentUser();
 
-  return <TopNavClient userEmail={user?.email ?? null} />;
+  return (
+    <TopNavClient
+      userEmail={user?.email ?? null}
+      userName={user?.user_metadata.name ?? user?.email ?? null}
+    />
+  );
 }

@@ -1,0 +1,29 @@
+{
+  "kind": "collectionType",
+  "collectionName": "deal_votes",
+  "info": {
+    "singularName": "deal-vote",
+    "pluralName": "deal-votes",
+    "displayName": "Deal Vote"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "deal": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::deal.deal",
+      "inversedBy": "votes"
+    },
+    "viewerId": {
+      "type": "string",
+      "required": true
+    },
+    "direction": {
+      "type": "enumeration",
+      "enum": ["up", "down"],
+      "required": true
+    }
+  }
+}

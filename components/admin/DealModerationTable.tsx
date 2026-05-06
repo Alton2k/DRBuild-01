@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { deleteDealAction, moderateDealAction, restoreReportedDealAction } from "@/app/actions";
 
 type DealStatus = "pending" | "approved" | "rejected";
-type ModerationFilter = "all" | DealStatus | "expired" | "reported";
+type ModerationFilter = "all" | DealStatus | "expired" | "reported" | "risk";
 type ModerationSort = "priority" | "most-reported" | "pending-first" | "newest";
 
 export interface DealModerationRow {
@@ -41,6 +41,11 @@ const moderationReasonLabels: Record<string, string> = {
   admin_manual_rejected: "Admin rejected",
   admin_manual_update: "Admin updated",
   admin_restored_reported: "Admin restored",
+  missing_image_manual_review: "Missing image",
+  quality_manual_review: "Quality review",
+  restricted_content_manual_review: "Restricted content",
+  suspicious_claim_manual_review: "Suspicious claim",
+  suspicious_link_manual_review: "Suspicious link",
 };
 
 const filterLabels: Record<ModerationFilter, string> = {
@@ -49,6 +54,7 @@ const filterLabels: Record<ModerationFilter, string> = {
   approved: "Approved",
   rejected: "Rejected",
   reported: "Reported",
+  risk: "Risk review",
   expired: "Expired",
 };
 
@@ -58,6 +64,7 @@ const filterOrder: ModerationFilter[] = [
   "approved",
   "rejected",
   "reported",
+  "risk",
   "expired",
 ];
 
@@ -106,9 +113,20 @@ const priorityWeight = (deal: DealModerationRow) => {
     deal.reportCount * 10 +
     (deal.status === "pending" ? 4 : 0) +
     (deal.isExpired ? 3 : 0) +
+    (isRiskReview(deal) ? 3 : 0) +
     (deal.duplicateReason ? 2 : 0)
   );
 };
+
+function isRiskReview(deal: DealModerationRow) {
+  return [
+    "missing_image_manual_review",
+    "quality_manual_review",
+    "restricted_content_manual_review",
+    "suspicious_claim_manual_review",
+    "suspicious_link_manual_review",
+  ].includes(deal.moderationReason);
+}
 
 interface DealModerationTableProps {
   initialDeals: DealModerationRow[];
@@ -139,6 +157,10 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
           counts.expired += 1;
         }
 
+        if (isRiskReview(deal)) {
+          counts.risk += 1;
+        }
+
         return counts;
       },
       {
@@ -147,6 +169,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
         approved: 0,
         rejected: 0,
         reported: 0,
+        risk: 0,
         expired: 0,
       } satisfies Record<ModerationFilter, number>,
     );
@@ -164,6 +187,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
           activeFilter === "all" ||
           deal.status === activeFilter ||
           (activeFilter === "reported" && deal.reportCount > 0) ||
+          (activeFilter === "risk" && isRiskReview(deal)) ||
           (activeFilter === "expired" && deal.isExpired);
 
         return matchesSearch && matchesFilter;
@@ -332,6 +356,11 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                           Needs report review
                         </span>
                       ) : null}
+                      {isRiskReview(deal) ? (
+                        <span className="rounded-full border border-violet-300 bg-violet-100 px-2 py-1 font-semibold text-violet-800">
+                          Automated risk check
+                        </span>
+                      ) : null}
                       {deal.isExpired ? (
                         <span className="rounded-full border border-rose-300 bg-rose-100 px-2 py-1 font-semibold text-rose-800">
                           Expired deal
@@ -366,8 +395,12 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       </span>
                     ) : null}
                     {deal.duplicateReason ? (
-                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
-                        Duplicate?
+                      <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] ${
+                        isRiskReview(deal)
+                          ? "border-violet-200 bg-violet-50 text-violet-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
+                      }`}>
+                        {isRiskReview(deal) ? "Signals" : "Duplicate?"}
                       </span>
                     ) : null}
                     <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
@@ -386,10 +419,16 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       {deal.reportCount} report{deal.reportCount === 1 ? "" : "s"}
                     </p>
                     {deal.duplicateReason ? (
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                        <p className="font-semibold">Possible duplicate</p>
+                      <div className={`rounded-2xl border p-3 text-xs leading-5 ${
+                        isRiskReview(deal)
+                          ? "border-violet-200 bg-violet-50 text-violet-900"
+                          : "border-amber-200 bg-amber-50 text-amber-900"
+                      }`}>
+                        <p className="font-semibold">
+                          {isRiskReview(deal) ? "Automated signals" : "Possible duplicate"}
+                        </p>
                         <p>{deal.duplicateReason}</p>
-                        {deal.duplicateOfDealId ? (
+                        {deal.duplicateOfDealId && !isRiskReview(deal) ? (
                           <Link
                             href={`/deal/${deal.duplicateOfDealId}`}
                             className="mt-1 inline-block font-semibold underline decoration-amber-300 underline-offset-2"
