@@ -10,6 +10,7 @@ interface InputFieldProps {
   hint?: string;
   error?: string;
   required?: boolean;
+  disabled?: boolean;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   extra?: React.ReactNode;
   onChange: (value: string) => void;
@@ -28,14 +29,22 @@ export default function InputField({
   hint,
   error,
   required,
+  disabled,
   inputMode,
   extra,
   onChange,
 }: InputFieldProps) {
+  const describedBy = [
+    hint ? `${id}-hint` : "",
+    error ? `${id}-error` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3 min-h-[1.75rem]">
-        <label htmlFor={id} className="block text-sm font-semibold text-slate-900">
+    <div className="space-y-2">
+      <div className="flex min-h-7 items-center justify-between gap-3">
+        <label htmlFor={id} className="block text-sm font-semibold text-slate-950">
           {label}
           {required ? <span className="ml-1 text-rose-600">*</span> : null}
         </label>
@@ -49,17 +58,20 @@ export default function InputField({
         placeholder={placeholder}
         inputMode={inputMode}
         onChange={(event) => onChange(event.target.value)}
-        className={`block w-full rounded-2xl border px-4 py-3 text-sm text-slate-900 shadow-sm transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 ${
-          error ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-white"
+        className={`block h-12 w-full rounded-2xl border px-4 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus-visible:bg-white focus-visible:ring-4 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 disabled:opacity-80 ${
+          error
+            ? "border-rose-300 bg-rose-50 focus-visible:border-rose-400 focus-visible:ring-rose-100"
+            : "border-slate-200 bg-slate-50 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:ring-slate-200"
         }`}
         aria-invalid={Boolean(error)}
-        aria-describedby={error ? `${id}-error` : undefined}
+        aria-describedby={describedBy || undefined}
         required={required}
+        disabled={disabled}
       />
-      <div className="space-y-1 text-sm">
-        {hint ? <p className="text-slate-500">{hint}</p> : null}
+      <div className="space-y-1 text-sm leading-5">
+        {hint ? <p id={`${id}-hint`} className="text-slate-500">{hint}</p> : null}
         {error ? (
-          <p id={`${id}-error`} className="text-rose-600">
+          <p id={`${id}-error`} className="font-semibold text-rose-700">
             {error}
           </p>
         ) : null}

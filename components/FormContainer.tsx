@@ -11,12 +11,12 @@ interface FormContainerProps {
  */
 export default function FormContainer({ title, description, children }: FormContainerProps) {
   return (
-    <section className="mx-auto w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
-      <div className="mb-8 space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Post a deal</p>
+    <section className="mx-auto w-full max-w-4xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 lg:p-10">
+      <div className="mb-7 border-b border-slate-200 pb-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">Post a deal</p>
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{title}</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">{description}</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{title}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">{description}</p>
         </div>
       </div>
       {children}

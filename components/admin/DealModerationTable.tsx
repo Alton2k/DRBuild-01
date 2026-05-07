@@ -266,7 +266,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="Search by title or store"
-            className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200"
+            className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
           />
           <label className="sr-only" htmlFor="moderation-sort">
             Sort deals
@@ -275,7 +275,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
             id="moderation-sort"
             value={sortMode}
             onChange={(event) => setSortMode(event.target.value as ModerationSort)}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200"
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 shadow-sm outline-none transition hover:border-slate-300 focus-visible:border-slate-500 focus-visible:ring-4 focus-visible:ring-slate-200"
           >
             <option value="priority">Priority</option>
             <option value="most-reported">Most reported</option>
@@ -296,7 +296,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
               onClick={() => setActiveFilter(filter)}
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
                 isActive
-                  ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                  ? "border-slate-900 bg-slate-950 text-white shadow-sm"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
               }`}
             >
@@ -314,7 +314,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
-        <div className="hidden grid-cols-7 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 sm:grid">
+        <div className="hidden grid-cols-7 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 sm:grid">
           <div className="col-span-2">Deal</div>
           <div>Store</div>
           <div>Submitted by</div>
@@ -332,13 +332,13 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
               const rowPending = isPending && pendingId === deal.id;
               const hasReports = deal.reportCount > 0;
               const rowClassName = [
-                "group flex flex-col gap-4 border-b border-slate-200 px-5 py-6 sm:grid sm:grid-cols-7 sm:items-center sm:gap-4 sm:px-6",
+                "group flex flex-col gap-4 border-b border-slate-200 px-5 py-6 transition sm:grid sm:grid-cols-7 sm:items-center sm:gap-4 sm:px-6",
                 hasReports || deal.isExpired ? "border-l-4" : "",
                 hasReports
                   ? "border-l-amber-500 bg-amber-50/70"
                   : deal.isExpired
                     ? "border-l-rose-500 bg-rose-50/70"
-                    : "border-slate-200 bg-white",
+                    : "border-slate-200 bg-white hover:bg-slate-50",
               ].join(" ");
 
               return (
@@ -444,7 +444,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       type="button"
                       onClick={() => handleModerate(deal.id, "approved")}
                       disabled={rowPending}
-                      className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-3 py-2 text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Approve
                     </button>
@@ -452,7 +452,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       type="button"
                       onClick={() => handleModerate(deal.id, "rejected")}
                       disabled={rowPending}
-                      className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-3 py-2 text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Reject
                     </button>
@@ -460,7 +460,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       type="button"
                       onClick={() => handleRestore(deal.id)}
                       disabled={rowPending || (deal.reportCount === 0 && !deal.isExpired)}
-                      className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-3 py-2 text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Restore
                     </button>
@@ -468,7 +468,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       type="button"
                       onClick={() => handleDelete(deal.id)}
                       disabled={rowPending}
-                      className="inline-flex items-center justify-center rounded-2xl bg-slate-100 px-3 py-2 text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Delete
                     </button>

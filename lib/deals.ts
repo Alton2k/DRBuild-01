@@ -80,6 +80,15 @@ type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "status"> & 
   moderationStatus?: DealStatus;
 };
 
+type StrapiDealVote = {
+  direction?: DealVoteDirection;
+  viewerId?: string;
+  deal?: {
+    id?: number;
+    documentId?: string;
+  };
+};
+
 function toNumber(value: number | string | null | undefined) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -213,16 +222,25 @@ export async function getDealVoteDirection(
   id: string,
   viewerId: string | undefined,
 ): Promise<DealVoteDirection | null> {
-  void id;
-  void viewerId;
+  if (!viewerId) {
+    return null;
+  }
 
-  return null;
+  const vote = await getDealVoteForViewer(id, viewerId);
+
+  return vote?.direction ?? null;
 }
 
 export async function getDealVoteDirectionsByDealIds(dealIds: string[], viewerId: string | undefined) {
-  void viewerId;
+  if (!viewerId || dealIds.length === 0) {
+    return new Map(dealIds.map((dealId) => [dealId, null as DealVoteDirection | null]));
+  }
 
-  return new Map(dealIds.map((dealId) => [dealId, null as DealVoteDirection | null]));
+  const entries = await Promise.all(
+    dealIds.map(async (dealId) => [dealId, await getDealVoteDirection(dealId, viewerId)] as const),
+  );
+
+  return new Map(entries);
 }
 
 export async function findDuplicateDeal(
@@ -364,6 +382,48 @@ export async function restoreReportedDeal(id: string) {
   return response.data ? toDeal(response.data) : null;
 }
 
+function getVoteDelta(direction: DealVoteDirection | null) {
+  if (direction === "up") {
+    return 1;
+  }
+
+  if (direction === "down") {
+    return -1;
+  }
+
+  return 0;
+}
+
+async function getDealVoteForViewer(dealId: string, viewerId: string) {
+  const query = new URLSearchParams({
+    "filters[deal][documentId][$eq]": dealId,
+    "filters[viewerId][$eq]": viewerId,
+    "pagination[pageSize]": "1",
+    populate: "deal",
+  });
+
+  const response = await strapiRequest<StrapiListResponse<StrapiDealVote>>("/api/deal-votes", { query }).catch(
+    () => null,
+  );
+  const vote = response?.data[0];
+
+  if (!vote) {
+    return null;
+  }
+
+  const fields = getStrapiEntityFields(vote);
+  const direction = fields.direction === "up" || fields.direction === "down" ? fields.direction : null;
+
+  if (!direction) {
+    return null;
+  }
+
+  return {
+    id: getStrapiEntityId(vote),
+    direction,
+  };
+}
+
 export async function voteDeal(id: string, viewerId: string, direction: DealVoteDirection) {
   const deal = await getDealById(id);
 
@@ -371,22 +431,54 @@ export async function voteDeal(id: string, viewerId: string, direction: DealVote
     return null;
   }
 
-  await strapiRequest("/api/deal-votes", {
-    method: "POST",
+  const existingVote = await getDealVoteForViewer(id, viewerId);
+  const nextDirection = existingVote?.direction === direction ? null : direction;
+  const scoreDelta = getVoteDelta(nextDirection) - getVoteDelta(existingVote?.direction ?? null);
+  const nextScore = deal.score + scoreDelta;
+
+  if (existingVote && nextDirection === null) {
+    await strapiRequest(`/api/deal-votes/${existingVote.id}`, {
+      method: "DELETE",
+      requireToken: true,
+    });
+  } else if (existingVote) {
+    await strapiRequest(`/api/deal-votes/${existingVote.id}`, {
+      method: "PUT",
+      requireToken: true,
+      body: {
+        data: {
+          direction: nextDirection,
+        },
+      },
+    });
+  } else {
+    await strapiRequest("/api/deal-votes", {
+      method: "POST",
+      requireToken: true,
+      body: {
+        data: {
+          deal: id,
+          viewerId,
+          direction,
+        },
+      },
+    });
+  }
+
+  const updatedDealResponse = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`, {
+    method: "PUT",
     requireToken: true,
     body: {
       data: {
-        deal: id,
-        viewerId,
-        direction,
+        score: nextScore,
       },
     },
   });
 
   return {
-    deal,
-    didVote: true,
-    viewerVote: direction,
+    deal: updatedDealResponse.data ? toDeal(updatedDealResponse.data) : { ...deal, score: nextScore },
+    didVote: nextDirection !== null,
+    viewerVote: nextDirection,
   };
 }
 

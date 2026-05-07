@@ -160,12 +160,12 @@ export default async function AdminDashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
+    <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-8 xl:flex-row xl:items-start">
           <aside className="w-full rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-24 xl:w-[280px]">
             <div className="mb-7">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Admin</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">Admin</p>
               <h1 className="mt-3 text-2xl font-semibold text-slate-950">Dashboard</h1>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Moderate submissions, inspect trust signals, and keep the public feed clean.
@@ -176,7 +176,7 @@ export default async function AdminDashboardPage() {
                 <a
                   key={item.label}
                   href={item.href}
-                  className="block rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+                  className="block rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
                 >
                   {item.label}
                 </a>
@@ -195,7 +195,7 @@ export default async function AdminDashboardPage() {
             <div id="overview" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
                     Moderation
                   </p>
                   <h2 className="mt-2 text-3xl font-semibold text-slate-950">

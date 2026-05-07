@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useActionState,
   useCallback,
@@ -8,6 +9,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { checkDuplicateDealAction, createDealAction, type DuplicateDealCheckResult } from "../actions";
 import { initialDealActionState } from "../dealActionState";
@@ -71,8 +73,8 @@ const initialFormState: DealFormState = {
 };
 
 const maxSourceImageBytes = 8_000_000;
-const maxCompressedDataUrlLength = 450_000;
-const maxImageDimension = 1200;
+const maxCompressedDataUrlLength = 110_000;
+const maxImageDimension = 820;
 const maxGalleryImages = 5;
 
 function readFileAsDataUrl(file: File) {
@@ -117,14 +119,14 @@ async function compressImage(file: File) {
   context.fillRect(0, 0, width, height);
   context.drawImage(image, 0, 0, width, height);
 
-  for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42]) {
+  for (const quality of [0.72, 0.62, 0.52, 0.42, 0.34, 0.28]) {
     const compressed = canvas.toDataURL("image/jpeg", quality);
     if (compressed.length <= maxCompressedDataUrlLength) {
       return compressed;
     }
   }
 
-  return canvas.toDataURL("image/jpeg", 0.36);
+  return canvas.toDataURL("image/jpeg", 0.22);
 }
 
 const initialScrapeSummary: ScrapeSummary = {
@@ -134,7 +136,187 @@ const initialScrapeSummary: ScrapeSummary = {
 };
 
 const steps = ["Link", "Details", "Price", "Review"];
+const stepDescriptions = [
+  "Paste the product or promo link.",
+  "Add the title, notes, and main image.",
+  "Set pricing and category.",
+  "Check everything before posting.",
+];
 const finalStep = steps.length - 1;
+
+function formatReviewPrice(value: string) {
+  const numberValue = Number(value);
+
+  if (!value.trim() || Number.isNaN(numberValue) || numberValue <= 0) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("en-MY", {
+    style: "currency",
+    currency: "MYR",
+    maximumFractionDigits: 2,
+  }).format(numberValue);
+}
+
+function ReviewField({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-1 break-words text-sm font-semibold text-slate-950">{value}</dd>
+    </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.5"
+    >
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  );
+}
+
+function RemoveIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.2"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M12 3v12" />
+      <path d="m7 8 5-5 5 5" />
+      <path d="M5 15v4h14v-4" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-6 w-6"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+      <path d="m21 15-5-5L5 21" />
+      <path d="m14 14-3-3-8 8" />
+      <path d="M14 7h.01" />
+    </svg>
+  );
+}
+
+function SpinnerIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={`${className} animate-spin`}
+      fill="none"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+      <path
+        className="opacity-90"
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="3"
+      />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function getSubmissionOutcome(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("published automatically")) {
+    return {
+      label: "Published automatically",
+      title: "Your deal is live",
+      description: "It passed the marketplace checks and is visible to shoppers now.",
+      tone: "emerald",
+    };
+  }
+
+  if (normalized.includes("duplicate")) {
+    return {
+      label: "Manual review",
+      title: "Submitted with a duplicate warning",
+      description: "Admins will compare it with the existing deal before deciding whether to publish it.",
+      tone: "amber",
+    };
+  }
+
+  return {
+    label: "Waiting for moderation",
+    title: "Your deal is in the review queue",
+    description: "The deal was saved successfully and will appear once it is approved.",
+    tone: "slate",
+  };
+}
 
 function applyDetectedType(
   values: DealFormState,
@@ -294,6 +476,7 @@ export default function PostClient() {
   const [detectedType, setDetectedType] = useState("");
   const [duplicateCheck, setDuplicateCheck] = useState<DuplicateDealCheckResult | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [showSuccessPanel, setShowSuccessPanel] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const lastAutoAdvancedUrl = useRef("");
@@ -520,6 +703,11 @@ export default function PostClient() {
 
     messageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+    if (actionState.ok) {
+      setShowSuccessPanel(true);
+      return;
+    }
+
     if (!actionState.errors) return;
 
     const timer = window.setTimeout(() => {
@@ -527,7 +715,7 @@ export default function PostClient() {
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [actionState.message, actionState.errors]);
+  }, [actionState.message, actionState.errors, actionState.ok, actionState.dealId]);
 
   useEffect(() => {
     if (!actionState.ok || !actionState.dealId) {
@@ -552,6 +740,12 @@ export default function PostClient() {
 
     return () => window.clearTimeout(timer);
   }, [actionState.ok, actionState.dealId]);
+
+  const handlePostAnother = () => {
+    setShowSuccessPanel(false);
+    setCurrentStep(0);
+    scrollToTop();
+  };
 
   const handleNext = () => {
     const validation = validateStep(form, currentStep);
@@ -704,6 +898,7 @@ export default function PostClient() {
   const discountLabel =
     originalPrice > currentPrice && discountAmount > 0 ? `${discountPercent}% off` : "";
   const canSubmit = !isPending && !isFetching;
+  const successOutcome = getSubmissionOutcome(actionState.message);
   const canShowDuplicateCheck =
     form.title.trim().length >= 8 && isValidUrl(form.url) && Boolean(form.store.trim());
   const unavailableScrapedFields = [
@@ -732,41 +927,139 @@ export default function PostClient() {
           description="Add the link, confirm the details, then submit for moderation."
         >
           <div className="space-y-6">
-            {actionState.message && actionState.message !== initialDealActionState.message ? (
-              <div
+            {actionState.ok && showSuccessPanel ? (
+              <section
                 ref={messageRef}
-                className={`rounded-2xl border px-5 py-4 text-sm shadow-sm ${
-                  actionState.ok
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                    : actionState.errors
-                    ? "border-rose-200 bg-rose-50 text-rose-900"
-                    : "border-slate-200 bg-slate-50 text-slate-700"
+                className={`overflow-hidden rounded-3xl border bg-white shadow-sm ${
+                  successOutcome.tone === "emerald"
+                    ? "border-emerald-200"
+                    : successOutcome.tone === "amber"
+                    ? "border-amber-200"
+                    : "border-slate-200"
                 }`}
                 aria-live="polite"
               >
-                <p className="font-semibold">
-                  {actionState.ok ? "Submitted" : "Fix these fields"}
-                </p>
+                <div
+                  className={`border-b px-5 py-5 sm:px-6 ${
+                    successOutcome.tone === "emerald"
+                      ? "border-emerald-200 bg-emerald-50"
+                      : successOutcome.tone === "amber"
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p
+                        className={`text-xs font-semibold uppercase tracking-[0.22em] ${
+                          successOutcome.tone === "emerald"
+                            ? "text-emerald-800"
+                            : successOutcome.tone === "amber"
+                            ? "text-amber-800"
+                            : "text-slate-500"
+                        }`}
+                      >
+                        {successOutcome.label}
+                      </p>
+                      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                        {successOutcome.title}
+                      </h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
+                        {successOutcome.description}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+                        successOutcome.tone === "emerald"
+                          ? "bg-emerald-600 text-white"
+                          : successOutcome.tone === "amber"
+                          ? "bg-amber-500 text-white"
+                          : "bg-slate-950 text-white"
+                      }`}
+                    >
+                      <CheckIcon />
+                    </span>
+                  </div>
+                </div>
+                <div className="px-5 py-5 sm:px-6">
+                  <p className="text-sm font-medium leading-6 text-slate-700">{actionState.message}</p>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    {actionState.dealId ? (
+                      <Link
+                        href={`/deal/${actionState.dealId}`}
+                        className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                      >
+                        View deal
+                        <ArrowRightIcon />
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={handlePostAnother}
+                      className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                    >
+                      Post another deal
+                    </button>
+                    <Link
+                      href="/"
+                      className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                    >
+                      Go home
+                    </Link>
+                  </div>
+                </div>
+              </section>
+            ) : actionState.message && actionState.message !== initialDealActionState.message && !actionState.ok ? (
+              <div
+                ref={messageRef}
+                className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900 shadow-sm"
+                aria-live="polite"
+              >
+                <p className="font-semibold">{actionState.errors ? "Fix these fields" : "Submission failed"}</p>
                 <p className="mt-1">{actionState.message}</p>
               </div>
             ) : null}
 
-            <div className="grid grid-cols-4 gap-2">
-              {steps.map((step, index) => (
-                <div
-                  key={step}
-                  className={`rounded-2xl border px-2 py-3 text-center text-xs font-semibold sm:text-sm ${
-                    index === currentStep
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : index < currentStep
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                      : "border-slate-200 bg-white text-slate-500"
-                  }`}
-                  aria-current={index === currentStep ? "step" : undefined}
-                >
-                  {step}
-                </div>
-              ))}
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-2">
+              <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {steps.map((step, index) => {
+                  const isCurrent = index === currentStep;
+                  const isComplete = index < currentStep;
+
+                  return (
+                    <li key={step}>
+                      <div
+                        className={`flex h-full items-start gap-3 rounded-2xl border px-3 py-3 transition ${
+                          isCurrent
+                            ? "border-slate-900 bg-white text-slate-950 shadow-sm ring-1 ring-slate-900"
+                            : isComplete
+                            ? "border-emerald-200 bg-white text-slate-700"
+                            : "border-transparent bg-transparent text-slate-500"
+                        }`}
+                        aria-current={isCurrent ? "step" : undefined}
+                      >
+                        <span
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                            isCurrent
+                              ? "bg-slate-950 text-white"
+                              : isComplete
+                              ? "bg-emerald-600 text-white"
+                              : "border border-slate-300 bg-white text-slate-500"
+                          }`}
+                        >
+                          {isComplete ? <CheckIcon /> : index + 1}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold">{step}</span>
+                          <span className="mt-0.5 hidden text-xs leading-5 text-slate-500 sm:block">
+                            {stepDescriptions[index]}
+                          </span>
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
 
             {currentStep === 0 ? (
@@ -781,6 +1074,7 @@ export default function PostClient() {
                   required
                   hint={urlHost || "Product or promo page"}
                   error={combinedErrors.url}
+                  disabled={isPending}
                   onChange={(value) => handleChange("url", value)}
                 />
 
@@ -817,6 +1111,7 @@ export default function PostClient() {
                     placeholder="Brand, item name, and key details"
                     required
                     error={combinedErrors.title}
+                    disabled={isPending}
                     onChange={(value) => handleChange("title", value)}
                   />
                 </div>
@@ -831,6 +1126,7 @@ export default function PostClient() {
                     required
                     rows={5}
                     error={combinedErrors.description}
+                    disabled={isPending}
                     onChange={(value) => handleChange("description", value)}
                   />
                 </div>
@@ -843,7 +1139,8 @@ export default function PostClient() {
                         <button
                           type="button"
                           onClick={() => applyScrapedField("title")}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300"
+                          disabled={isPending}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
                         >
                           Title
                         </button>
@@ -852,7 +1149,8 @@ export default function PostClient() {
                         <button
                           type="button"
                           onClick={() => applyScrapedField("description")}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300"
+                          disabled={isPending}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
                         >
                           Description
                         </button>
@@ -861,7 +1159,8 @@ export default function PostClient() {
                         <button
                           type="button"
                           onClick={() => applyScrapedField("imageUrl")}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300"
+                          disabled={isPending}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
                         >
                           Image
                         </button>
@@ -883,6 +1182,7 @@ export default function PostClient() {
                       <button
                         type="button"
                         onClick={() => handleChange("imageUrl", "")}
+                        disabled={isPending}
                         className="text-sm font-semibold text-slate-500 hover:text-slate-900"
                       >
                         Remove
@@ -911,6 +1211,7 @@ export default function PostClient() {
                   required
                   inputMode="decimal"
                   error={combinedErrors.price}
+                  disabled={isPending}
                   onChange={(value) => handleChange("price", value)}
                 />
 
@@ -930,6 +1231,7 @@ export default function PostClient() {
                       </div>
                     ) : null
                   }
+                  disabled={isPending}
                   onChange={(value) => handleChange("originalPrice", value)}
                 />
 
@@ -944,9 +1246,10 @@ export default function PostClient() {
                           key={option}
                           type="button"
                           onClick={() => handleChange("store", option)}
+                          disabled={isPending}
                           className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
                             selected
-                              ? "bg-slate-900 text-white shadow-sm"
+                              ? "bg-slate-950 text-white shadow-sm"
                               : "bg-transparent text-slate-700 hover:bg-slate-100"
                           }`}
                         >
@@ -965,6 +1268,7 @@ export default function PostClient() {
                   options={categoryOptions}
                   required
                   error={combinedErrors.category}
+                  disabled={isPending}
                   onChange={(value) => handleChange("category", value)}
                 />
 
@@ -979,6 +1283,7 @@ export default function PostClient() {
                       ? "No sub category needed."
                       : undefined
                   }
+                  disabled={isPending}
                   onChange={(value) => handleChange("subCategory", value)}
                 />
 
@@ -991,161 +1296,262 @@ export default function PostClient() {
             ) : null}
 
             {currentStep === 3 ? (
-              <form id="deal-review-form" action={formAction} onSubmit={handleSubmit} className="space-y-5">
+              <form
+                id="deal-review-form"
+                action={formAction}
+                onSubmit={handleSubmit}
+                className="space-y-5"
+                aria-busy={isPending}
+              >
+                {isPending ? (
+                  <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm" aria-live="polite">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
+                        <SpinnerIcon className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <p className="text-base font-semibold text-slate-950">Submitting your deal</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          We are saving the deal, checking moderation status, and preparing the confirmation.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full w-2/3 animate-pulse rounded-full bg-slate-950" />
+                    </div>
+                  </div>
+                ) : null}
+
                 {canShowDuplicateCheck && duplicateCheck?.match ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950" aria-live="polite">
-                    <p className="font-semibold">Possible duplicate</p>
-                    <p className="mt-1">{duplicateCheck.match.title}</p>
-                    <p className="mt-1 text-amber-900">{getDuplicateReasonLabel(duplicateCheck.match.reason)}</p>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="font-semibold">Possible duplicate</p>
+                        <p className="mt-1 text-amber-900">{getDuplicateReasonLabel(duplicateCheck.match.reason)}</p>
+                      </div>
+                      <p className="text-sm font-medium text-amber-950 sm:max-w-sm sm:text-right">
+                        {duplicateCheck.match.title}
+                      </p>
+                    </div>
                   </div>
                 ) : canShowDuplicateCheck && isCheckingDuplicate ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600" aria-live="polite">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600" aria-live="polite">
                     Checking duplicates...
                   </div>
                 ) : null}
 
-                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 sm:grid-cols-2">
-                  <p><span className="font-semibold text-slate-900">Title:</span> {form.title || "-"}</p>
-                  <p><span className="font-semibold text-slate-900">Price:</span> RM {form.price || "-"}</p>
-                  <p><span className="font-semibold text-slate-900">Category:</span> {form.category || "-"}</p>
-                  <p><span className="font-semibold text-slate-900">Availability:</span> {form.store}</p>
-                  <p className="sm:col-span-2"><span className="font-semibold text-slate-900">URL:</span> {urlHost || "-"}</p>
-                </div>
-
-                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <h3 className="text-sm font-semibold text-slate-900">Deal photos</h3>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                      {form.imageUrl ? "Thumbnail ready" : "Product photo required"}
-                    </span>
-                  </div>
-
-                  {shouldShowProductUpload ? (
-                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-slate-900">Product photo</p>
-                        <span className="text-xs font-medium text-slate-500">Used as thumbnail</span>
+                <section className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+                    <div className="min-w-0 space-y-5">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                          Review
+                        </p>
+                        <h2 className="mt-2 break-words text-2xl font-semibold text-slate-950">
+                          {form.title || "Untitled deal"}
+                        </h2>
                       </div>
-                      {submittedImageUrl ? (
-                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <UserImage
-                            src={submittedImageUrl}
-                            alt="Product photo preview"
-                            className="h-48 w-full rounded-lg object-contain"
-                          />
-                        </div>
-                      ) : null}
-                      <label
-                        className={`flex min-h-[120px] flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white px-4 text-center text-sm transition hover:bg-slate-50 ${
-                          combinedErrors.imageName
-                            ? "border-rose-300 text-rose-700 hover:border-rose-400"
-                            : "border-slate-300 text-slate-500 hover:border-slate-400"
+
+                      <dl className="grid gap-4 sm:grid-cols-2">
+                        <ReviewField label="Deal price" value={formatReviewPrice(form.price)} />
+                        <ReviewField
+                          label="Original price"
+                          value={form.originalPrice ? formatReviewPrice(form.originalPrice) : "-"}
+                        />
+                        <ReviewField
+                          label="Category"
+                          value={form.subCategory ? `${form.category} / ${form.subCategory}` : form.category || "-"}
+                        />
+                        <ReviewField label="Store / availability" value={form.store || "-"} />
+                        <ReviewField
+                          label="Deal URL"
+                          value={urlHost || "-"}
+                          className="sm:col-span-2"
+                        />
+                        <ReviewField
+                          label="Description"
+                          value={form.description || "-"}
+                          className="sm:col-span-2"
+                        />
+                      </dl>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div
+                        className={`relative overflow-hidden rounded-2xl border bg-white shadow-sm ${
+                          combinedErrors.imageName || imageLoadError
+                            ? "border-rose-200"
+                            : "border-slate-200"
                         }`}
                       >
-                        <span>{submittedImageUrl ? "Change product photo" : "Upload product photo"}</span>
-                        <span className="mt-2 text-xs text-slate-400">Large images are compressed automatically</span>
-                        <input
-                          name="productImageFile"
-                          type="file"
-                          accept="image/*"
-                          className="sr-only"
-                          aria-invalid={Boolean(combinedErrors.imageName)}
-                          onChange={handleProductImageChange}
-                        />
-                      </label>
-                      <p className="text-sm text-slate-500">
-                        {form.imageName ? `Selected: ${form.imageName}` : "No product photo selected."}
+                        {form.imageUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => handleChange("imageUrl", "")}
+                            disabled={isPending}
+                            aria-label="Remove autofilled image"
+                            className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                          >
+                            <RemoveIcon />
+                          </button>
+                        ) : null}
+                        <div className="flex aspect-[4/3] items-center justify-center bg-slate-100 p-4">
+                          {productImageUrl ? (
+                            <UserImage
+                              src={productImageUrl}
+                              alt="Product photo preview"
+                              className="h-full w-full rounded-xl object-contain"
+                              onError={form.imageUrl ? handleScrapedImageError : undefined}
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center px-4 text-center text-slate-500">
+                              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400">
+                                <ImageIcon />
+                              </span>
+                              <p className="mt-3 text-sm font-semibold text-slate-700">
+                                Product photo required
+                              </p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                                Add a clear image of the item or promo.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="border-t border-slate-200 bg-white px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-950">Product photo</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {form.imageUrl ? "Autofilled from the link." : "Used as the deal thumbnail."}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Required
+                            </span>
+                          </div>
+                          {form.imageName ? (
+                            <p className="mt-2 truncate text-xs text-slate-500">
+                              {form.imageName}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {imageLoadError ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                          The autofilled image could not be loaded. Upload a product photo manually to continue.
+                        </div>
+                      ) : null}
+
+                      {combinedErrors.imageName ? (
+                        <p className="text-sm font-medium text-rose-700">{combinedErrors.imageName}</p>
+                      ) : null}
+
+                      {shouldShowProductUpload ? (
+                        <label
+                          className={`flex min-h-[116px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 text-center text-sm font-semibold transition focus-within:outline-none focus-within:ring-4 ${
+                            combinedErrors.imageName
+                              ? "border-rose-300 bg-rose-50 text-rose-700 hover:border-rose-400 focus-within:ring-rose-100"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 focus-within:ring-slate-200"
+                          }`}
+                        >
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm">
+                            <UploadIcon />
+                          </span>
+                          <span className="mt-3">{submittedImageUrl ? "Change photo" : "Upload product photo"}</span>
+                          <span className="mt-1 text-xs font-medium text-slate-400">
+                            Large images are handled automatically.
+                          </span>
+                          <input
+                            name="productImageFile"
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            aria-invalid={Boolean(combinedErrors.imageName)}
+                            disabled={isPending}
+                            onChange={handleProductImageChange}
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-950">Optional photos</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Add extra angles or screenshots. Up to {maxGalleryImages - 1}.
                       </p>
                     </div>
-                  ) : null}
-
-                  {form.imageUrl ? (
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-slate-900">Autofilled product image</p>
-                        <button
-                          type="button"
-                          onClick={() => handleChange("imageUrl", "")}
-                          className="text-sm font-semibold text-slate-500 hover:text-slate-900"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <UserImage
-                        src={form.imageUrl}
-                        alt="Selected deal preview"
-                        className="mt-3 h-48 w-full rounded-xl object-contain"
-                      />
-                    </div>
-                  ) : null}
+                    {form.optionalImageUrls.length ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((current) => ({
+                            ...current,
+                            optionalImageNames: [],
+                            optionalImageUrls: [],
+                            imageGalleryUrls: current.uploadedImageUrl ? [current.uploadedImageUrl] : [],
+                          }));
+                        }}
+                        disabled={isPending}
+                        className="text-sm font-semibold text-slate-500 transition hover:text-slate-950"
+                      >
+                        Remove all
+                      </button>
+                    ) : null}
+                  </div>
 
                   {form.optionalImageUrls.length ? (
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-slate-900">Optional photos</p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setForm((current) => ({
-                              ...current,
-                              optionalImageNames: [],
-                              optionalImageUrls: [],
-                              imageGalleryUrls: current.uploadedImageUrl ? [current.uploadedImageUrl] : [],
-                            }));
-                          }}
-                          className="text-sm font-semibold text-slate-500 hover:text-slate-900"
-                        >
-                          Remove all
-                        </button>
-                      </div>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        {form.optionalImageUrls.map((imageUrl, index) => (
-                          <div key={`${imageUrl.slice(0, 32)}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                            <UserImage
-                              src={imageUrl}
-                              alt={`Optional deal preview ${index + 1}`}
-                              className="h-40 w-full rounded-lg object-contain"
-                            />
-                            <div className="mt-2 flex items-center justify-between gap-2">
-                              <p className="text-xs font-semibold text-slate-600">
-                                {form.optionalImageNames[index] || `Optional photo ${index + 1}`}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setForm((current) => {
-                                    const optionalImageUrls = current.optionalImageUrls.filter((_, photoIndex) => photoIndex !== index);
-                                    const optionalImageNames = current.optionalImageNames.filter((_, photoIndex) => photoIndex !== index);
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {form.optionalImageUrls.map((imageUrl, index) => (
+                        <div key={`${imageUrl.slice(0, 32)}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((current) => {
+                                const optionalImageUrls = current.optionalImageUrls.filter((_, photoIndex) => photoIndex !== index);
+                                const optionalImageNames = current.optionalImageNames.filter((_, photoIndex) => photoIndex !== index);
 
-                                    return {
-                                      ...current,
-                                      optionalImageUrls,
-                                      optionalImageNames,
-                                      imageGalleryUrls: [current.uploadedImageUrl, ...optionalImageUrls].filter(Boolean).slice(0, maxGalleryImages),
-                                    };
-                                  });
-                                }}
-                                className="text-xs font-semibold text-slate-500 hover:text-slate-950"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                                return {
+                                  ...current,
+                                  optionalImageUrls,
+                                  optionalImageNames,
+                                  imageGalleryUrls: [current.uploadedImageUrl, ...optionalImageUrls].filter(Boolean).slice(0, maxGalleryImages),
+                                };
+                              });
+                            }}
+                            disabled={isPending}
+                            aria-label={`Remove optional photo ${index + 1}`}
+                            className="absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                          >
+                            <RemoveIcon />
+                          </button>
+                          <UserImage
+                            src={imageUrl}
+                            alt={`Optional deal preview ${index + 1}`}
+                            className="aspect-[4/3] w-full object-contain p-2"
+                          />
+                        </div>
+                      ))}
                     </div>
                   ) : null}
 
                   <label
-                    className={`flex min-h-[120px] flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white px-4 text-center text-sm transition hover:bg-slate-50 ${
+                    className={`mt-4 flex min-h-[88px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center text-sm font-semibold transition focus-within:outline-none focus-within:ring-4 ${
                       combinedErrors.imageName
-                        ? "border-rose-300 text-rose-700 hover:border-rose-400"
-                      : "border-slate-300 text-slate-500 hover:border-slate-400"
+                        ? "border-rose-300 bg-rose-50 text-rose-700 hover:border-rose-400 focus-within:ring-rose-100"
+                      : "border-slate-300 bg-slate-50 text-slate-600 hover:border-slate-400 hover:bg-white focus-within:ring-slate-200"
                     }`}
                   >
-                    <span>Add optional photo</span>
-                    <span className="mt-2 text-xs text-slate-400">
-                      Add one at a time. Up to {maxGalleryImages - 1} optional photos.
+                    <span className="inline-flex items-center gap-2">
+                      <UploadIcon />
+                      Add optional photo
+                    </span>
+                    <span className="mt-1 text-xs font-medium text-slate-400">
+                      Upload one at a time.
                     </span>
                     <input
                       name="optionalImageFile"
@@ -1153,13 +1559,14 @@ export default function PostClient() {
                       accept="image/*"
                       className="sr-only"
                       aria-invalid={Boolean(combinedErrors.imageName)}
+                      disabled={isPending}
                       onChange={handleOptionalImageChange}
                     />
                   </label>
                   {combinedErrors.imageName ? (
-                    <p className="text-sm text-rose-600">{combinedErrors.imageName}</p>
+                    <p className="mt-2 text-sm font-medium text-rose-700">{combinedErrors.imageName}</p>
                   ) : null}
-                </div>
+                </section>
 
                 <input type="hidden" name="title" value={form.title} />
                 <input type="hidden" name="url" value={form.url} />
@@ -1175,13 +1582,13 @@ export default function PostClient() {
               </form>
             ) : null}
 
-            <div className="sticky bottom-0 z-10 -mx-4 rounded-t-2xl border-t border-slate-200 bg-slate-50/90 px-4 py-4 backdrop-blur-sm shadow-[0_-10px_30px_rgba(15,23,42,0.08)] sm:static sm:mx-0 sm:rounded-none sm:border-none sm:bg-transparent sm:shadow-none">
+            <div className="sticky bottom-0 z-10 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:static sm:mx-0 sm:rounded-none sm:border-none sm:bg-transparent sm:px-0 sm:shadow-none">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
                   onClick={handleBack}
                   disabled={currentStep === 0 || isPending}
-                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Back
                 </button>
@@ -1195,8 +1602,8 @@ export default function PostClient() {
                       event.stopPropagation();
                       handleNext();
                     }}
-                    disabled={isFetching}
-                    className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    disabled={isFetching || isPending}
+                    className="inline-flex h-12 items-center justify-center rounded-full bg-slate-950 px-8 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
                     {isFetching ? "Checking..." : "Next"}
                   </button>
@@ -1207,9 +1614,16 @@ export default function PostClient() {
                     form="deal-review-form"
                     disabled={!canSubmit}
                     aria-busy={isPending}
-                    className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-8 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    {isPending ? "Posting..." : "Post Deal"}
+                    {isPending ? (
+                      <>
+                        <SpinnerIcon />
+                        Submitting deal
+                      </>
+                    ) : (
+                      "Submit deal"
+                    )}
                   </button>
                 )}
               </div>

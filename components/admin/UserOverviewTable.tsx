@@ -30,7 +30,7 @@ const statusLabels: Record<UserTrustStatus, string> = {
 };
 
 const statusStyles: Record<UserTrustStatus, string> = {
-  admin: "border-slate-300 bg-slate-900 text-white",
+  admin: "border-slate-300 bg-slate-950 text-white",
   trusted: "border-emerald-200 bg-emerald-50 text-emerald-800",
   "needs-review": "border-amber-200 bg-amber-50 text-amber-800",
   "new-user": "border-sky-200 bg-sky-50 text-sky-800",
@@ -128,7 +128,7 @@ export default function UserOverviewTable({ users }: UserOverviewTableProps) {
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="Search users"
-            className="min-w-[240px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal text-slate-900 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200"
+            className="min-w-[240px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
           />
         </label>
       </div>
@@ -145,7 +145,7 @@ export default function UserOverviewTable({ users }: UserOverviewTableProps) {
               onClick={() => setActiveStatus(status)}
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
                 isActive
-                  ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                  ? "border-slate-900 bg-slate-950 text-white shadow-sm"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
               }`}
             >
@@ -163,7 +163,7 @@ export default function UserOverviewTable({ users }: UserOverviewTableProps) {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
-        <div className="hidden grid-cols-8 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 lg:grid">
+        <div className="hidden grid-cols-8 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 lg:grid">
           <div className="col-span-2">User</div>
           <div>Status</div>
           <div>Total</div>
@@ -181,7 +181,7 @@ export default function UserOverviewTable({ users }: UserOverviewTableProps) {
             filteredUsers.map((user) => (
               <article
                 key={user.id}
-                className="grid gap-4 bg-white px-5 py-6 lg:grid-cols-8 lg:items-center lg:px-6"
+                className="grid gap-4 bg-white px-5 py-6 transition hover:bg-slate-50 lg:grid-cols-8 lg:items-center lg:px-6"
               >
                 <div className="lg:col-span-2">
                   <p className="font-semibold text-slate-950">{user.name}</p>

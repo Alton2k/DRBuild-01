@@ -102,13 +102,13 @@ export default function CommentModerationTable({
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="Search comments"
-            className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal text-slate-900 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200"
+            className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
           />
         </label>
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
-        <div className="hidden grid-cols-6 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 sm:grid">
+        <div className="hidden grid-cols-6 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 sm:grid">
           <div className="col-span-2">Comment</div>
           <div className="col-span-2">Deal</div>
           <div>Stats</div>
@@ -126,7 +126,7 @@ export default function CommentModerationTable({
               return (
                 <article
                   key={comment.id}
-                  className="flex flex-col gap-4 bg-white px-5 py-6 sm:grid sm:grid-cols-6 sm:items-start sm:gap-4 sm:px-6"
+                  className="flex flex-col gap-4 bg-white px-5 py-6 transition hover:bg-slate-50 sm:grid sm:grid-cols-6 sm:items-start sm:gap-4 sm:px-6"
                 >
                   <div className="sm:col-span-2">
                     <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
@@ -159,7 +159,7 @@ export default function CommentModerationTable({
                       type="button"
                       onClick={() => handleDelete(comment.id)}
                       disabled={rowPending}
-                      className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-3 py-2 text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {rowPending ? "Deleting..." : "Delete"}
                     </button>

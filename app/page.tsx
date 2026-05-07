@@ -12,12 +12,14 @@ import { getCommentCountsByDealIds } from "@/lib/comments";
 import CategorySidebar from "@/components/CategorySidebar";
 import DealVoteButtons from "@/components/DealVoteButtons";
 import RunningTime from "@/components/RunningTime";
+import SaveDealButton from "@/components/SaveDealButton";
+import ShareDealButton from "@/components/ShareDealButton";
 import UserImage from "@/components/UserImage";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "DealMY - Malaysia Deal Marketplace",
+  title: "Deal Rakyat - Malaysia Deal Marketplace",
   description: "A clean deal-sharing homepage for Malaysia-focused community deals.",
 };
 
@@ -36,21 +38,21 @@ const feedModes: {
 }[] = [
   {
     value: "hot",
-    label: "Hot",
-    description: "Ranked by Score",
-    heading: "Hot approved deals",
+    label: "Trending",
+    description: "Sorted by popularity",
+    heading: "Trending deals right now",
   },
   {
     value: "new",
     label: "New",
-    description: "Ranked by Newest.",
-    heading: "Newest approved deals",
+    description: "Freshly shared finds",
+    heading: "New deals just shared",
   },
   {
     value: "discussed",
     label: "Discussed",
-    description: "Ranked by Most Comments",
-    heading: "Most discussed deals",
+    description: "Active community chatter",
+    heading: "Deals people are talking about",
   },
 ];
 
@@ -127,6 +129,23 @@ function getSavingsAmount(deal: Deal) {
 
 const dealViewerCookieName = "dealmy_deal_viewer_id";
 
+function CommentIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z" />
+    </svg>
+  );
+}
+
 function DealCard({
   deal,
   commentCount,
@@ -142,24 +161,25 @@ function DealCard({
     ? `${deal.category} / ${deal.subCategory}`
     : deal.category;
   const thumbnailUrl = deal.imageGalleryUrls[0] || deal.imageUrl || deal.uploadedImageUrl;
+  const dealHref = `/deal/${deal.id}`;
 
   return (
     <article
       className={`overflow-hidden rounded-3xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${
-        deal.isExpired ? "border-rose-200 opacity-80" : "border-slate-200"
+        deal.isExpired ? "border-rose-200 bg-rose-50/40 opacity-85" : "border-slate-200"
       }`}
     >
-      <div className="grid gap-0 md:grid-cols-[180px_minmax(0,1fr)]">
+      <div className="grid gap-0 md:grid-cols-[190px_minmax(0,1fr)]">
         <Link
-          href={`/deal/${deal.id}`}
-          className="flex aspect-[16/10] items-center justify-center bg-slate-100 md:aspect-auto md:min-h-full"
+          href={dealHref}
+          className="flex aspect-[16/10] items-center justify-center border-b border-slate-200 bg-slate-100 md:aspect-auto md:min-h-full md:border-b-0 md:border-r"
           aria-label={`View ${deal.title}`}
         >
           {thumbnailUrl ? (
             <UserImage
               src={thumbnailUrl}
               alt=""
-              className={`h-full w-full object-contain p-4 ${deal.isExpired ? "grayscale" : ""}`}
+              className={`h-full w-full object-contain p-4 transition duration-200 hover:scale-[1.02] ${deal.isExpired ? "grayscale" : ""}`}
             />
           ) : (
             <span className="px-4 text-center text-sm font-medium text-slate-400">
@@ -168,7 +188,7 @@ function DealCard({
           )}
         </Link>
 
-        <div className="flex min-w-0 flex-col p-4 sm:p-5">
+        <div className="flex min-w-0 flex-col p-4 sm:p-5 lg:p-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -178,7 +198,7 @@ function DealCard({
                   </span>
                 ) : null}
                 {discountPercent ? (
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
                     {discountPercent}% off
                   </span>
                 ) : null}
@@ -188,7 +208,7 @@ function DealCard({
               </div>
 
               <Link
-                href={`/deal/${deal.id}`}
+                href={dealHref}
                 className="line-clamp-2 text-lg font-semibold leading-6 text-slate-950 transition hover:text-slate-700 sm:text-xl"
               >
                 {deal.title}
@@ -206,7 +226,7 @@ function DealCard({
 
             <div className="shrink-0 lg:text-right">
               <div className="flex flex-wrap items-end gap-2 lg:justify-end">
-                <p className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+                <p className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
                   {formatPrice(deal.price)}
                 </p>
                 {deal.originalPrice ? (
@@ -227,24 +247,27 @@ function DealCard({
             {deal.description}
           </p>
 
-          <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-              <DealVoteButtons
-                dealId={deal.id}
-                initialScore={deal.score}
-                initialVote={initialVote}
-                scoreClassName="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800"
-              />
+              <DealVoteButtons dealId={deal.id} initialScore={deal.score} initialVote={initialVote} />
               <Link
-                href={`/deal/${deal.id}#comments`}
-                className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                href={`${dealHref}#comments`}
+                aria-label={`${commentCount} ${commentCount === 1 ? "comment" : "comments"}`}
+                className="inline-flex h-12 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
               >
-                {commentCount} {commentCount === 1 ? "comment" : "comments"}
+                <CommentIcon />
+                <span>{commentCount}</span>
               </Link>
+              <SaveDealButton dealId={deal.id} />
+              <ShareDealButton
+                title={deal.title}
+                href={dealHref}
+                text={`Check out this deal on Deal Rakyat: ${deal.title}`}
+              />
             </div>
             <Link
-              href={`/deal/${deal.id}`}
-              className="inline-flex h-11 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              href={dealHref}
+              className="inline-flex h-12 min-w-[128px] items-center justify-center rounded-full bg-slate-950 px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
             >
               View Deal
             </Link>
@@ -302,34 +325,29 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:grid lg:grid-cols-[1.6fr_0.9fr] lg:px-8">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:grid lg:grid-cols-[1.6fr_0.9fr] lg:px-8">
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="max-w-2xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
                 Marketplace
               </p>
-              <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                Community deals that are ready to shop
+              <h1 className="mt-4 max-w-xl text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                Good Deals, Shared Fast
               </h1>
-              <p className="mt-3 text-base leading-7 text-slate-600 sm:text-lg">
-                Share discounts, promos, and useful finds. New submissions land in moderation first, then approved deals appear here.
+              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                Find the latest savings from stores, apps, and shoppers around Malaysia. Browse fresh promos, price drops, vouchers, and limited-time offers shared by people who spot value first.
               </p>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/post"
-                className="inline-flex min-w-[170px] items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                Post Deal
-              </Link>
+              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                Post a deal, vote on what&apos;s worth it, and help other Malaysians shop smarter.
+              </p>
             </div>
           </div>
         </section>
 
         <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:h-full">
           <div className="mb-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
               Browse
             </p>
             <h2 className="mt-2 text-xl font-semibold text-slate-950">Categories</h2>
@@ -344,7 +362,7 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
               scroll={false}
               className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
                 category
-                  ? "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:text-slate-950"
+                  ? "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white hover:text-slate-950"
                   : "border-slate-900 bg-slate-900 text-white"
               }`}
             >
@@ -373,7 +391,7 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
                   Community posts
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-slate-950">
@@ -464,14 +482,14 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                   <Link
                     href={createHomeHref({ feed })}
                     scroll={false}
-                    className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
                   >
                     Clear filters
                   </Link>
                 ) : (
                   <Link
                     href="/post"
-                    className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
                   >
                     Post a Deal
                   </Link>
@@ -484,7 +502,7 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
 
       <footer className="border-t border-slate-200 bg-white/90 px-4 py-6 text-sm text-slate-600 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p>DealMY</p>
+          <p>Deal Rakyat</p>
           <div className="flex flex-wrap gap-4">
             <a href="#" className="transition hover:text-slate-900">
               About

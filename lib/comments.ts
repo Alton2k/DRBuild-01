@@ -189,7 +189,7 @@ export async function likeComment(
   dealId: string,
   id: string,
   viewerId: string,
-): Promise<{ comment: Comment; didLike: boolean } | null> {
+): Promise<{ comment: Comment; viewerHasLiked: boolean; didChange: boolean } | null> {
   const comment = await strapiRequest<StrapiSingleResponse<StrapiComment>>(`/api/comments/${id}`, {
     query: new URLSearchParams({ populate: "deal" }),
   })
@@ -200,11 +200,10 @@ export async function likeComment(
     return null;
   }
 
-  if (comment.likedBy.includes(viewerId)) {
-    return { comment, didLike: false };
-  }
-
-  const likedBy = [...comment.likedBy, viewerId];
+  const viewerHasLiked = comment.likedBy.includes(viewerId);
+  const likedBy = viewerHasLiked
+    ? comment.likedBy.filter((likedViewerId) => likedViewerId !== viewerId)
+    : [...comment.likedBy, viewerId];
   const response = await strapiRequest<StrapiSingleResponse<StrapiComment>>(`/api/comments/${id}`, {
     method: "PUT",
     requireToken: true,
@@ -216,5 +215,7 @@ export async function likeComment(
     },
   });
 
-  return response.data ? { comment: toComment(response.data), didLike: true } : null;
+  return response.data
+    ? { comment: toComment(response.data), viewerHasLiked: !viewerHasLiked, didChange: true }
+    : null;
 }

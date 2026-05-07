@@ -560,7 +560,7 @@ export async function voteDealAction(
   return {
     ok: true,
     score: result.deal.score,
-    viewerVote: direction,
+    viewerVote: result.viewerVote,
   };
 }
 
@@ -612,14 +612,14 @@ export async function likeCommentAction(dealId: string, commentId: string) {
     };
   }
 
-  if (result.didLike) {
+  if (result.didChange) {
     revalidatePath(`/deal/${dealId}`);
   }
 
   return {
     ok: true,
     likeCount: result.comment.likeCount,
-    viewerHasLiked: true,
+    viewerHasLiked: result.viewerHasLiked,
   };
 }
 

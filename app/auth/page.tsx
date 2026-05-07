@@ -4,7 +4,7 @@ import AuthForm from "./AuthForm";
 import type { AuthMode } from "./actions";
 
 export const metadata = {
-  title: "Log in | DealMY",
+  title: "Log in | Deal Rakyat",
   description: "Log in or create an account for Deal Rakyat.",
 };
 
@@ -42,7 +42,7 @@ export default async function AuthPage({
       : undefined;
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-12 text-slate-900 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
       <AuthForm initialMode={getInitialMode(params.mode)} next={next} setupMessage={setupMessage} />
     </main>
   );

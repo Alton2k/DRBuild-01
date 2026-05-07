@@ -6,7 +6,8 @@ import CommentThread, { type ThreadComment } from "@/components/CommentThread";
 import DealImageCarousel from "@/components/DealImageCarousel";
 import DealVoteButtons from "@/components/DealVoteButtons";
 import RunningTime from "@/components/RunningTime";
-import UserImage from "@/components/UserImage";
+import SaveDealButton from "@/components/SaveDealButton";
+import ShareDealButton from "@/components/ShareDealButton";
 import { getCommentsForDeal } from "@/lib/comments";
 import { getDealById, getDealVoteDirection, type Deal } from "@/lib/deals";
 
@@ -54,29 +55,20 @@ function getStoreHost(value: string) {
   }
 }
 
-function DetailStat({
-  label,
-  value,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  tone?: "neutral" | "warning" | "danger" | "positive";
-}) {
-  const valueClassName = {
-    neutral: "text-slate-950",
-    warning: "text-amber-700",
-    danger: "text-rose-700",
-    positive: "text-emerald-700",
-  }[tone];
-
+function CommentIcon() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-      <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-        {label}
-      </dt>
-      <dd className={`mt-1 text-sm font-semibold ${valueClassName}`}>{value}</dd>
-    </div>
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z" />
+    </svg>
   );
 }
 
@@ -89,7 +81,7 @@ export async function generateMetadata({
   const deal = await getDealById(id);
 
   return {
-    title: deal ? `${deal.title} | DealMY` : "Deal not found | DealMY",
+    title: deal ? `${deal.title} | Deal Rakyat` : "Deal not found | Deal Rakyat",
     description: deal?.description ?? "Deal detail page",
   };
 }
@@ -125,11 +117,7 @@ export default async function DealDetailPage({
     : deal.category;
   const savingsAmount = getSavingsAmount(deal);
   const storeHost = getStoreHost(deal.url);
-  const commentsLabel = `${comments.length} ${comments.length === 1 ? "comment" : "comments"}`;
-  const reportsLabel =
-    deal.reportCount > 0
-      ? `${deal.reportCount} ${deal.reportCount === 1 ? "report" : "reports"}`
-      : "No reports";
+  const dealHref = `/deal/${deal.id}`;
   const markExpiredAction = markDealExpiredAction.bind(null, deal.id);
   const reportAction = reportDealAction.bind(null, deal.id);
   const galleryImages =
@@ -138,34 +126,26 @@ export default async function DealDetailPage({
       : [deal.imageUrl || deal.uploadedImageUrl].filter(Boolean);
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <Link href="/" className="text-sm font-semibold text-slate-600 transition hover:text-slate-950">
             Back to deals
           </Link>
-          <div className="flex flex-wrap items-center gap-2">
-            {deal.isExpired ? (
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700">
-                Expired
-              </span>
-            ) : null}
-            <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
-              {deal.status}
+          {deal.isExpired ? (
+            <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700">
+              Expired
             </span>
-            {deal.reportCount > 0 ? (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-                Reported
-              </span>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
-        <section className="grid gap-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 lg:grid-cols-[0.85fr_1.15fr]">
-          <DealImageCarousel images={galleryImages} title={deal.title} />
+        <section className="grid gap-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-8 lg:p-8">
+          <div className="lg:sticky lg:top-24 lg:self-start">
+            <DealImageCarousel images={galleryImages} title={deal.title} />
+          </div>
 
-          <div className="flex flex-col gap-6">
-            <div>
+          <div className="flex min-w-0 flex-col gap-6">
+            <header className="border-b border-slate-200 pb-6">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                   {deal.store}
@@ -173,199 +153,160 @@ export default async function DealDetailPage({
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                   {categoryLabel}
                 </span>
+                {discountPercent ? (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                    {discountPercent}% off
+                  </span>
+                ) : null}
               </div>
+
               <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
                 {deal.title}
               </h1>
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+
+              <div className="mt-5 flex flex-wrap items-end gap-x-3 gap-y-2">
+                <p className="text-4xl font-bold text-slate-950 sm:text-5xl">
+                  {formatPrice(deal.price)}
+                </p>
+                {deal.originalPrice ? (
+                  <p className="pb-1 text-base text-slate-500 line-through">
+                    {formatPrice(deal.originalPrice)}
+                  </p>
+                ) : null}
+                {savingsAmount ? (
+                  <span className="mb-1 rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold text-emerald-700">
+                    Save {formatPrice(savingsAmount)}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
                 <span>
                   Posted <RunningTime timestamp={deal.createdAt} />
                 </span>
-                <time dateTime={deal.createdAt}>({formatDateTime(deal.createdAt)})</time>
+                <span aria-hidden="true">/</span>
+                <time dateTime={deal.createdAt}>{formatDateTime(deal.createdAt)}</time>
               </div>
-            </div>
+            </header>
 
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Deal price
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-end gap-3">
-                    <p className="text-4xl font-semibold text-slate-950 sm:text-5xl">
-                      {formatPrice(deal.price)}
-                    </p>
-                    {deal.originalPrice ? (
-                      <p className="pb-1 text-base text-slate-500 line-through">
-                        {formatPrice(deal.originalPrice)}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {discountPercent ? (
-                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                        {discountPercent}% off
-                      </span>
-                    ) : null}
-                    {savingsAmount ? (
-                      <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold text-emerald-700">
-                        Save {formatPrice(savingsAmount)}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-
-                <dl className="grid min-w-0 grid-cols-2 gap-3 sm:min-w-[320px]">
-                  <DetailStat label="Score" value={String(deal.score)} tone={deal.score >= 0 ? "positive" : "danger"} />
-                  <DetailStat label="Discussion" value={commentsLabel} />
-                  <DetailStat label="Store" value={deal.store} />
-                  <DetailStat label="Reports" value={reportsLabel} tone={deal.reportCount > 0 ? "warning" : "neutral"} />
-                </dl>
+            {deal.isExpired ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-900">
+                This deal is marked expired
+                {deal.expiredAt ? ` as of ${formatDateTime(deal.expiredAt)}` : ""}.
               </div>
-
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">
-                      {deal.isExpired ? "This deal is marked expired" : `Open deal at ${deal.store}`}
-                    </p>
-                    <p className="mt-1 break-all text-xs leading-5 text-slate-500">
-                      {storeHost || deal.url}
-                    </p>
-                  </div>
-                  <a
-                    href={deal.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-disabled={deal.isExpired}
-                    className={`inline-flex h-12 shrink-0 items-center justify-center rounded-full px-5 text-sm font-semibold transition ${
-                      deal.isExpired
-                        ? "pointer-events-none bg-slate-200 text-slate-500"
-                        : "bg-slate-900 text-white hover:bg-slate-800"
-                    }`}
-                  >
-                    {deal.isExpired ? "Deal Expired" : "Go to Deal"}
-                  </a>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <DealVoteButtons
-                  dealId={deal.id}
-                  initialScore={deal.score}
-                  initialVote={viewerDealVote}
-                  scoreClassName="text-sm text-slate-600"
-                  buttonClassName="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </div>
-            </div>
-
-            {(deal.isExpired || deal.reportCount > 0) ? (
-              <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
-                <h2 className="text-base font-semibold text-amber-950">Community context</h2>
-                <div className="mt-3 grid gap-2 text-sm leading-6 text-amber-900">
-                  {deal.isExpired ? (
-                    <p>
-                      Marked expired
-                      {deal.expiredAt ? ` on ${formatDateTime(deal.expiredAt)}` : ""}. Check comments before attempting checkout.
-                    </p>
-                  ) : null}
-                  {deal.reportCount > 0 ? (
-                    <p>
-                      {deal.reportCount} community {deal.reportCount === 1 ? "report has" : "reports have"} been submitted for this deal.
-                    </p>
-                  ) : null}
-                </div>
-              </section>
             ) : null}
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-950">
+                {deal.isExpired ? "Original deal link" : `Available from ${deal.store}`}
+              </p>
+              <p className="mt-1 break-all text-xs leading-5 text-slate-500">
+                {storeHost || deal.url}
+              </p>
+              <a
+                href={deal.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-disabled={deal.isExpired}
+                className={`mt-4 inline-flex h-12 w-full items-center justify-center rounded-full px-5 text-sm font-semibold transition sm:w-auto ${
+                  deal.isExpired
+                    ? "pointer-events-none bg-slate-200 text-slate-500"
+                    : "bg-slate-950 text-white shadow-sm hover:bg-slate-800"
+                }`}
+              >
+                {deal.isExpired ? "Deal Expired" : "View Deal"}
+              </a>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <DealVoteButtons
+                dealId={deal.id}
+                initialScore={deal.score}
+                initialVote={viewerDealVote}
+              />
+              <a
+                href="#comments"
+                aria-label={`${comments.length} ${comments.length === 1 ? "comment" : "comments"}`}
+                className="inline-flex h-12 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+              >
+                <CommentIcon />
+                <span>{comments.length}</span>
+              </a>
+              <SaveDealButton dealId={deal.id} />
+              <ShareDealButton
+                title={deal.title}
+                href={dealHref}
+                text={`Check out this deal on Deal Rakyat: ${deal.title}`}
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+              />
+            </div>
           </div>
         </section>
 
-        <section className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <section className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-              Details
+              Description
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-950">Deal description</h2>
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
               {deal.description}
             </p>
-            {deal.uploadedImageUrl && deal.imageGalleryUrls.length === 0 ? (
-              <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Submitted image</p>
-                <UserImage
-                  src={deal.uploadedImageUrl}
-                  alt=""
-                  className="mt-4 max-h-[420px] w-full rounded-2xl object-contain"
-                />
-              </div>
-            ) : null}
           </div>
 
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between lg:flex-col">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                  Maintenance
-                </p>
-                <h2 className="mt-2 text-xl font-semibold text-slate-950">Keep this deal useful</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Mark it expired or report issues so the community can shop with more confidence.
-                </p>
-                {deal.reportCount > 0 ? (
-                  <p className="mt-2 text-sm font-semibold text-amber-700">
-                    {deal.reportCount} report{deal.reportCount === 1 ? "" : "s"} submitted
-                  </p>
-                ) : null}
-              </div>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+                Help
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-950">Keep this deal accurate</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Mark it expired or report an issue if something looks off.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <form action={markExpiredAction}>
                 <button
                   type="submit"
                   disabled={deal.isExpired}
-                  className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-11 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Mark expired
                 </button>
               </form>
-            </div>
 
-            <form action={reportAction} className="mt-5 flex flex-col gap-3">
-              <label className="sr-only" htmlFor="report-reason">
-                Report reason
-              </label>
-              <select
-                id="report-reason"
-                name="reason"
-                defaultValue="expired"
-                className="min-h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200"
-              >
-                <option value="expired">Already expired</option>
-                <option value="bad-price">Price is wrong</option>
-                <option value="bad-link">Link does not work</option>
-                <option value="spam">Spam or unsafe</option>
-              </select>
-              <button
-                type="submit"
-                className="inline-flex h-11 items-center justify-center rounded-full bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                Report
-              </button>
-            </form>
+              <form action={reportAction} className="flex flex-col gap-3">
+                <label className="sr-only" htmlFor="report-reason">
+                  Report reason
+                </label>
+                <select
+                  id="report-reason"
+                  name="reason"
+                  defaultValue="expired"
+                  className="min-h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-950 shadow-sm outline-none transition hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
+                >
+                  <option value="expired">Already expired</option>
+                  <option value="bad-price">Price is wrong</option>
+                  <option value="bad-link">Link does not work</option>
+                  <option value="spam">Spam or unsafe</option>
+                </select>
+                <button
+                  type="submit"
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                >
+                  Report
+                </button>
+              </form>
+            </div>
           </section>
         </section>
 
-        <section id="comments" className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Community
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">Discussion</h2>
-            
-            </div>
-            <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-              {commentsLabel}
-            </span>
+        <section id="comments" className="mt-8 scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+          <div className="border-b border-slate-200 pb-5">
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+              Community
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Comments</h2>
           </div>
 
           <CommentThread dealId={deal.id} comments={threadComments} />

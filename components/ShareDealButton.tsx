@@ -1,0 +1,118 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+type ShareStatus = "idle" | "copied" | "shared" | "error";
+
+function getAbsoluteDealUrl(href: string) {
+  if (typeof window === "undefined") {
+    return href;
+  }
+
+  return new URL(href, window.location.origin).toString();
+}
+
+export default function ShareDealButton({
+  title,
+  href,
+  text,
+  className,
+}: {
+  title: string;
+  href: string;
+  text?: string;
+  className?: string;
+}) {
+  const [status, setStatus] = useState<ShareStatus>("idle");
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const showStatus = (nextStatus: ShareStatus) => {
+    setStatus(nextStatus);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      setStatus("idle");
+    }, 2200);
+  };
+
+  const shareDeal = async () => {
+    const url = getAbsoluteDealUrl(href);
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title,
+          text: text ?? "Check out this Deal Rakyat deal.",
+          url,
+        });
+        showStatus("shared");
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      showStatus("copied");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      showStatus("error");
+    }
+  };
+
+  const statusLabel = {
+    idle: "",
+    copied: "Link copied",
+    shared: "Shared",
+    error: "Could not share",
+  }[status];
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        aria-label="Share deal"
+        onClick={shareDeal}
+        className={
+          className ??
+          "inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+        }
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        >
+          <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+          <path d="m16 6-4-4-4 4" />
+          <path d="M12 2v13" />
+        </svg>
+      </button>
+      <span
+        role="status"
+        aria-live="polite"
+        className={`text-xs font-semibold ${
+          status === "error" ? "text-rose-700" : "text-slate-500"
+        }`}
+      >
+        {statusLabel}
+      </span>
+    </span>
+  );
+}

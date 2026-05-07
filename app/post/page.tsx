@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import PostClient from "./PostClient";
 
 export const metadata = {
-  title: "Post Deal | DealMY",
+  title: "Post Deal | Deal Rakyat",
   description: "Submit a new deal listing with a clean, mobile-friendly form.",
 };
 

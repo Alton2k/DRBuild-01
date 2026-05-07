@@ -3,7 +3,7 @@ import TopNav from "@/components/TopNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DealMY",
+  title: "Deal Rakyat",
   description: "Malaysia-focused community deals.",
 };
 

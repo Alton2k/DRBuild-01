@@ -1,6 +1,6 @@
-# DealMY
+# Deal Rakyat
 
-DealMY is a Next.js frontend with a Strapi CMS/API backend for a Malaysia-focused deal marketplace.
+Deal Rakyat is a Next.js frontend with a Strapi CMS/API backend for a Malaysia-focused deal marketplace.
 
 ## Stack
 
