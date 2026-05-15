@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { dealCategories } from "@/lib/categories";
 import TopNavClient from "./TopNavClient";
 
 /**
@@ -9,6 +10,7 @@ export default async function TopNav() {
 
   return (
     <TopNavClient
+      categories={dealCategories}
       userEmail={user?.email ?? null}
       userName={user?.user_metadata.name ?? user?.email ?? null}
     />

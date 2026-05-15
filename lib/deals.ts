@@ -71,6 +71,7 @@ export interface ApprovedDealFilters {
   category?: string;
   subCategory?: string;
   feed?: DealFeedMode;
+  createdAfter?: string;
 }
 
 type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "status"> & {
@@ -164,6 +165,10 @@ function addApprovedFilters(params: URLSearchParams, filters: ApprovedDealFilter
     params.set("filters[$or][2][store][$containsi]", filters.q);
     params.set("filters[$or][3][category][$containsi]", filters.q);
     params.set("filters[$or][4][subCategory][$containsi]", filters.q);
+  }
+
+  if (filters.createdAfter) {
+    params.set("filters[createdAt][$gte]", filters.createdAfter);
   }
 }
 

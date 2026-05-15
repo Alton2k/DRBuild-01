@@ -2,29 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { signOutAction } from "@/app/auth/actions";
+import type { DealCategory } from "@/lib/categories";
 
 type ThemeMode = "auto" | "dark" | "light";
 
 const themeStorageKey = "dealmy_theme";
 const themeModeChangedEventName = "dealmy:theme-mode-changed";
 
-const appearanceOptions: { value: ThemeMode; label: string; description: string }[] = [
+const appearanceOptions: { value: ThemeMode; label: string }[] = [
   {
-    value: "auto",
-    label: "Auto",
-    description: "Follow browser",
+    value: "light",
+    label: "Light",
   },
   {
     value: "dark",
     label: "Dark",
-    description: "Always dark",
   },
   {
-    value: "light",
-    label: "Light",
-    description: "Always light",
+    value: "auto",
+    label: "Auto",
   },
 ];
 
@@ -70,15 +68,20 @@ function subscribeToThemeModeChanges(onStoreChange: () => void) {
  * Provides the shared site navigation shown above every route.
  */
 export default function TopNavClient({
+  categories,
   userEmail,
-  userName,
 }: {
+  categories: DealCategory[];
   userEmail: string | null;
   userName: string | null;
 }) {
   const pathname = usePathname();
   const authNext = pathname === "/auth" ? "/" : pathname;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [openCategory, setOpenCategory] = useState("");
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+  const lastScrollYRef = useRef(0);
   const themeMode = useSyncExternalStore<ThemeMode>(
     subscribeToThemeModeChanges,
     getStoredThemeMode,
@@ -103,8 +106,60 @@ export default function TopNavClient({
     };
   }, [themeMode]);
 
+  useEffect(() => {
+    if (isMenuOpen) {
+      return;
+    }
+
+    lastScrollYRef.current = window.scrollY;
+    let animationFrame = 0;
+
+    const handleScroll = () => {
+      if (animationFrame) {
+        return;
+      }
+
+      animationFrame = window.requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        const scrollDelta = currentScrollY - lastScrollYRef.current;
+
+        if (currentScrollY < 80) {
+          setIsHeaderHidden(false);
+        } else if (scrollDelta > 8) {
+          setIsHeaderHidden(true);
+        } else if (scrollDelta < -8) {
+          setIsHeaderHidden(false);
+        }
+
+        lastScrollYRef.current = currentScrollY;
+        animationFrame = 0;
+      });
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [isMenuOpen]);
+
   const handleLogoClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (pathname !== "/") {
+    if (pathname !== "/" || window.location.search) {
+      return;
+    }
+
+    event.preventDefault();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSidebarHomeClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    closeMenu();
+
+    if (pathname !== "/" || window.location.search) {
       return;
     }
 
@@ -119,21 +174,41 @@ export default function TopNavClient({
   };
 
   const authHref = `/auth?next=${encodeURIComponent(authNext)}`;
-  const closeMenu = () => setIsMenuOpen(false);
+  const closeMenu = () => {
+    setIsMenuOpen(false);
+    setIsCategoryMenuOpen(false);
+    setOpenCategory("");
+  };
   const postIsActive = pathname === "/post";
   const profileIsActive = pathname === "/profile";
+  const createCategoryHref = (category: string, subCategory?: string) => {
+    const params = new URLSearchParams({ category });
+
+    if (subCategory) {
+      params.set("subCategory", subCategory);
+    }
+
+    return `/?${params.toString()}#deals`;
+  };
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur-xl">
-      <nav className="mx-auto grid max-w-7xl gap-3 px-4 py-3 sm:px-6 lg:grid-cols-[auto_minmax(280px,1fr)_auto] lg:items-center lg:px-8">
+      <header
+        className={`sticky top-0 z-40 border-b border-[#cbd83d] bg-[#e6f24f] shadow-sm backdrop-blur-xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
+          isHeaderHidden ? "-translate-y-full" : "translate-y-0"
+        }`}
+      >
+      <nav className="mx-auto grid max-w-7xl gap-3 px-4 py-3 sm:px-6 lg:grid-cols-[auto_minmax(240px,1fr)_auto] lg:items-center lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             aria-label="Open menu"
             aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen(true)}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+            onClick={() => {
+              setIsHeaderHidden(false);
+              setIsMenuOpen(true);
+            }}
+            className="topbar-account-action inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition"
           >
             <svg
               aria-hidden="true"
@@ -155,10 +230,9 @@ export default function TopNavClient({
             onClick={handleLogoClick}
             className="inline-flex min-w-0 items-center gap-3 rounded-full pr-2 text-lg font-semibold text-slate-950 transition hover:text-slate-700"
           >
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-sm">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-sm ring-2 ring-white/55">
               D
             </span>
-            <span className="truncate">Deal Rakyat</span>
           </Link>
         </div>
 
@@ -166,7 +240,7 @@ export default function TopNavClient({
           action="/"
           method="get"
           role="search"
-          className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm transition focus-within:border-slate-500 focus-within:bg-white focus-within:ring-4 focus-within:ring-slate-200"
+          className="mx-auto flex w-full max-w-md min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white/90 px-3 py-2 shadow-sm transition focus-within:border-[#e0115f]/45 focus-within:bg-white focus-within:ring-4 focus-within:ring-[#e0115f]/15"
         >
           <label className="sr-only" htmlFor="top-search-deals">
             Search deals
@@ -193,7 +267,7 @@ export default function TopNavClient({
           />
           <button
             type="submit"
-            className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:bg-slate-400"
+            className="topbar-account-action inline-flex h-8 shrink-0 items-center justify-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/20 disabled:opacity-60"
           >
             Search
           </button>
@@ -203,12 +277,25 @@ export default function TopNavClient({
           <Link
             href="/post"
             aria-current={postIsActive ? "page" : undefined}
-            className={`inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-semibold shadow-sm transition ${
+            className={`post-deal-cta inline-flex h-11 items-center justify-center gap-2 rounded-full border-[3px] px-4 text-sm font-bold transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/25 ${
               postIsActive
-                ? "bg-slate-700 text-white"
-                : "bg-slate-950 text-white hover:bg-slate-800"
+                ? "is-active"
+                : ""
             }`}
           >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="h-4 w-4 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="3"
+            >
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
             Post Deal
           </Link>
           {userEmail ? (
@@ -216,10 +303,10 @@ export default function TopNavClient({
               <Link
                 href="/profile"
                 aria-current={profileIsActive ? "page" : undefined}
-                className={`inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
+                className={`topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
                   profileIsActive
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                    ? "is-active"
+                    : ""
                 }`}
               >
                 Profile
@@ -228,7 +315,7 @@ export default function TopNavClient({
                 <button
                   type="submit"
                   title={userEmail}
-                  className="inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                  className="topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition"
                 >
                   Log out
                 </button>
@@ -237,7 +324,7 @@ export default function TopNavClient({
           ) : (
             <Link
               href={authHref}
-              className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+              className="topbar-account-action inline-flex h-10 items-center justify-center rounded-full border px-4 text-sm font-semibold transition"
             >
               Log in / Register
             </Link>
@@ -252,31 +339,23 @@ export default function TopNavClient({
         className={`fixed inset-0 z-40 bg-slate-950/35 transition-opacity duration-300 ease-out motion-reduce:duration-0 ${
           isMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
-        onClick={() => setIsMenuOpen(false)}
+        onClick={closeMenu}
         aria-hidden={!isMenuOpen}
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[min(88vw,360px)] transform-gpu flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-full max-w-sm transform-gpu flex-col border-r border-slate-200 bg-white text-slate-950 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
           isMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-hidden={!isMenuOpen}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white shadow-sm">
-              D
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-950">Deal Rakyat</p>
-              <p className="text-xs text-slate-500">Menu</p>
-            </div>
-          </div>
+        <div className="flex items-center justify-between border-b border-slate-200 bg-[#e6f24f] px-5 py-4">
+          <p className="truncate text-xl font-bold text-black">Menu</p>
           <button
             type="button"
             aria-label="Close menu"
-            onClick={() => setIsMenuOpen(false)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+            onClick={closeMenu}
+            className="topbar-account-action inline-flex h-10 w-10 items-center justify-center rounded-full border transition"
           >
             <svg
               aria-hidden="true"
@@ -297,44 +376,135 @@ export default function TopNavClient({
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-6">
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Navigation
+            </h2>
+            <Link
+              href="/"
+              onClick={handleSidebarHomeClick}
+              aria-current={pathname === "/" ? "page" : undefined}
+              className="sidebar-menu-action mt-3 inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-5 w-5 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              >
+                <path d="m3 10 9-7 9 7" />
+                <path d="M5 10v10h14V10" />
+                <path d="M9 20v-6h6v6" />
+              </svg>
+              <span>Home</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setOpenCategory("");
+                setIsCategoryMenuOpen(true);
+              }}
+              className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+              aria-expanded={isCategoryMenuOpen}
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-5 w-5 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              >
+                <path d="M4 6h16" />
+                <path d="M4 12h16" />
+                <path d="M4 18h16" />
+                <path d="M8 6v12" />
+              </svg>
+              <span>Categories</span>
+            </button>
+          </section>
+
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
               Account
             </h2>
-            <div className="mt-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-3 space-y-2">
               {userEmail ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">{userName ?? userEmail}</p>
-                    <p className="mt-1 truncate text-sm text-slate-600">{userEmail}</p>
-                  </div>
+                <>
                   <Link
                     href="/profile"
                     onClick={closeMenu}
-                    className="inline-flex h-10 w-full items-center justify-center rounded-full bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    aria-current={profileIsActive ? "page" : undefined}
+                    className={`inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
+                      profileIsActive
+                        ? "sidebar-menu-action-active"
+                        : "sidebar-menu-action"
+                    }`}
                   >
-                    View profile
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="8" r="4" />
+                      <path d="M4 21a8 8 0 0 1 16 0" />
+                    </svg>
+                    <span>Settings</span>
                   </Link>
                   <form action={signOutAction}>
                     <button
                       type="submit"
-                      className="inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                      className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
                     >
-                      Log out
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5 shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      >
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <path d="m16 17 5-5-5-5" />
+                        <path d="M21 12H9" />
+                      </svg>
+                      <span>Log out</span>
                     </button>
                   </form>
-                </div>
+                </>
               ) : (
-                <div className="space-y-3">
-                  <p className="text-sm leading-6 text-slate-600">
-                    Log in to post deals, vote, and comment.
-                  </p>
-                  <Link
-                    href={authHref}
-                    onClick={closeMenu}
-                    className="inline-flex h-10 w-full items-center justify-center rounded-full bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+                <Link
+                  href={authHref}
+                  onClick={closeMenu}
+                  className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
                   >
-                    Log in / Register
-                  </Link>
-                </div>
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                    <path d="m10 17 5-5-5-5" />
+                    <path d="M15 12H3" />
+                  </svg>
+                  <span>Log in / Register</span>
+                </Link>
               )}
             </div>
           </section>
@@ -343,7 +513,7 @@ export default function TopNavClient({
             <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
               Appearance
             </h2>
-            <div className="mt-3 grid gap-2 rounded-3xl border border-slate-200 bg-slate-50 p-2">
+            <div className="mt-3 grid grid-cols-3 gap-1 rounded-full border border-slate-900 bg-white p-1 shadow-inner">
               {appearanceOptions.map((option) => {
                 const isSelected = option.value === themeMode;
 
@@ -351,28 +521,192 @@ export default function TopNavClient({
                   <button
                     key={option.value}
                     type="button"
+                    aria-label={`Use ${option.label.toLowerCase()} appearance`}
                     aria-pressed={isSelected}
+                    title={option.label}
                     onClick={() => handleThemeChange(option.value)}
-                    className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
+                    className={`inline-flex h-10 min-w-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 ${
                       isSelected
-                        ? "border-slate-900 bg-white text-slate-950 shadow-sm"
-                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                        ? "border border-[#e0115f] bg-[#e0115f] text-white shadow-sm ring-2 ring-[#e0115f]/25"
+                        : "appearance-mode-option"
                     }`}
                   >
-                    <span>
-                      <span className="block text-sm font-semibold">{option.label}</span>
-                      <span className="mt-1 block text-xs text-slate-500">{option.description}</span>
-                    </span>
-                    <span
-                      className={`h-3 w-3 rounded-full border ${
-                        isSelected ? "border-slate-900 bg-slate-900" : "border-slate-300"
-                      }`}
-                    />
+                    <span className="sr-only">{option.label}</span>
+                    {option.value === "light" ? (
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      >
+                        <circle cx="12" cy="12" r="4" />
+                        <path d="M12 2v2" />
+                        <path d="M12 20v2" />
+                        <path d="m4.93 4.93 1.41 1.41" />
+                        <path d="m17.66 17.66 1.41 1.41" />
+                        <path d="M2 12h2" />
+                        <path d="M20 12h2" />
+                        <path d="m6.34 17.66-1.41 1.41" />
+                        <path d="m19.07 4.93-1.41 1.41" />
+                      </svg>
+                    ) : option.value === "dark" ? (
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      >
+                        <path d="M12 3a6.36 6.36 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                      </svg>
+                    ) : (
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      >
+                        <rect width="18" height="12" x="3" y="4" rx="2" />
+                        <path d="M8 20h8" />
+                        <path d="M12 16v4" />
+                      </svg>
+                    )}
                   </button>
                 );
               })}
             </div>
           </section>
+        </div>
+      </aside>
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-full max-w-sm transform-gpu flex-col border-r border-slate-200 bg-white text-slate-950 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
+          isMenuOpen && isCategoryMenuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        aria-hidden={!isMenuOpen || !isCategoryMenuOpen}
+      >
+        <div className="flex items-center justify-between border-b border-slate-200 bg-[#e6f24f] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              aria-label="Back to menu"
+              onClick={() => {
+                setIsCategoryMenuOpen(false);
+                setOpenCategory("");
+              }}
+              className="topbar-account-action inline-flex h-10 w-10 items-center justify-center rounded-full border transition"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              >
+                <path d="M19 12H5" />
+                <path d="m12 19-7-7 7-7" />
+              </svg>
+            </button>
+            <p className="truncate text-xl font-bold text-black">Categories</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close categories"
+            onClick={closeMenu}
+            className="topbar-account-action inline-flex h-10 w-10 items-center justify-center rounded-full border transition"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+          <div className="grid gap-1">
+            <Link
+              href="/"
+              onClick={closeMenu}
+              className="sidebar-menu-action rounded-lg px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+            >
+              All categories
+            </Link>
+            {categories.map((dealCategory) => {
+              const hasSubcategories = dealCategory.subcategories.length > 0;
+              const isExpanded = openCategory === dealCategory.name;
+
+              return (
+                <div key={dealCategory.name}>
+                  {hasSubcategories ? (
+                    <button
+                      type="button"
+                      onClick={() => setOpenCategory(isExpanded ? "" : dealCategory.name)}
+                      className="sidebar-menu-action flex w-full items-center justify-between rounded-lg px-1 py-2 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                      aria-expanded={isExpanded}
+                    >
+                      <span>{dealCategory.name}</span>
+                      <span aria-hidden="true" className="text-current">
+                        {isExpanded ? "-" : "+"}
+                      </span>
+                    </button>
+                  ) : (
+                    <Link
+                      href={createCategoryHref(dealCategory.name)}
+                      onClick={closeMenu}
+                      className="sidebar-menu-action block rounded-lg px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                    >
+                      {dealCategory.name}
+                    </Link>
+                  )}
+
+                  {hasSubcategories && isExpanded ? (
+                    <div className="ml-3 mt-1 grid gap-1 border-l border-slate-200 pl-3">
+                      <Link
+                        href={createCategoryHref(dealCategory.name)}
+                        onClick={closeMenu}
+                        className="sidebar-menu-action rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                      >
+                        All {dealCategory.name}
+                      </Link>
+                      {dealCategory.subcategories.map((subcategory) => (
+                        <Link
+                          key={subcategory}
+                          href={createCategoryHref(dealCategory.name, subcategory)}
+                          onClick={closeMenu}
+                          className="sidebar-menu-action rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                        >
+                          {subcategory}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </aside>
     </>

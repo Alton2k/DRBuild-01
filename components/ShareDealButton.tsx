@@ -79,7 +79,7 @@ export default function ShareDealButton({
   }[status];
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex items-center">
       <button
         type="button"
         aria-label="Share deal"
@@ -107,9 +107,7 @@ export default function ShareDealButton({
       <span
         role="status"
         aria-live="polite"
-        className={`text-xs font-semibold ${
-          status === "error" ? "text-rose-700" : "text-slate-500"
-        }`}
+        className="sr-only"
       >
         {statusLabel}
       </span>

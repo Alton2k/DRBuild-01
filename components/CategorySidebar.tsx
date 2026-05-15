@@ -30,12 +30,14 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
   );
 
   const openSidebar = () => {
+    setOpenCategory("");
     setIsVisible(true);
     window.requestAnimationFrame(() => setIsOpen(true));
   };
 
   const closeSidebar = () => {
     setIsOpen(false);
+    setOpenCategory("");
   };
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
       <button
         type="button"
         onClick={openSidebar}
-        className="mt-4 inline-flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-white"
+        className="mt-4 inline-flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition hover:border-[#e0115f]/40 hover:bg-white hover:text-[#e0115f]"
       >
         <span>Browse all categories</span>
         <span aria-hidden="true" className="text-slate-400">
@@ -71,48 +73,55 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
             }`}
           />
           <aside
-            className={`absolute right-0 top-0 flex h-full w-full max-w-sm transform-gpu flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
+            className={`absolute right-0 top-0 flex h-full w-full max-w-sm transform-gpu flex-col border-l border-slate-200 bg-white text-slate-950 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
               isOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >
-            <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  Browse
-                </p>
-                <h2 className="mt-1 text-lg font-semibold text-slate-950">Categories</h2>
-              </div>
+            <div className="flex items-center justify-between border-b border-slate-200 bg-[#e6f24f] px-5 py-4">
+              <h2 className="truncate text-xl font-bold text-black">Categories</h2>
               <button
                 type="button"
                 onClick={closeSidebar}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
                 aria-label="Close category menu"
+                className="topbar-account-action inline-flex h-10 w-10 items-center justify-center rounded-full border transition"
               >
-                X
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
               <div className="grid gap-2">
                 {categories.map((dealCategory) => {
                   const hasSubcategories = dealCategory.subcategories.length > 0;
                   const isExpanded = openCategory === dealCategory.label;
 
                   return (
-                    <div key={dealCategory.label} className="border-b border-slate-100 last:border-b-0">
+                    <div key={dealCategory.label}>
                       {hasSubcategories ? (
                         <button
                           type="button"
                           onClick={() => setOpenCategory(isExpanded ? "" : dealCategory.label)}
-                          className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${
+                          className={`flex w-full items-center justify-between rounded-lg px-1 py-3 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
                             dealCategory.active
-                              ? "bg-slate-100 text-slate-950"
-                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                              ? "sidebar-menu-action-active"
+                              : "sidebar-menu-action"
                           }`}
                           aria-expanded={isExpanded}
                         >
                           <span>{dealCategory.label}</span>
-                          <span aria-hidden="true" className="text-slate-400">
+                          <span aria-hidden="true" className="text-current">
                             {isExpanded ? "-" : "+"}
                           </span>
                         </button>
@@ -121,10 +130,10 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                           href={dealCategory.href}
                           scroll={false}
                           onClick={closeSidebar}
-                          className={`flex items-center justify-between rounded-xl px-3 py-3 text-sm font-semibold transition ${
+                          className={`flex items-center justify-between rounded-lg px-1 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
                             dealCategory.active
-                              ? "bg-slate-100 text-slate-950"
-                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                              ? "sidebar-menu-action-active"
+                              : "sidebar-menu-action"
                           }`}
                         >
                           <span>{dealCategory.label}</span>
@@ -132,16 +141,16 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                       )}
 
                       {hasSubcategories && isExpanded ? (
-                        <div className="px-3 pb-3">
-                        <div className="mt-2 grid gap-1 pb-1">
+                        <div className="pb-3 pl-6">
+                        <div className="mt-1 grid gap-1 border-l border-slate-200 pl-3">
                           <Link
                             href={dealCategory.href}
                             scroll={false}
                             onClick={closeSidebar}
-                            className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                            className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
                               dealCategory.active && !dealCategory.subcategories.some((subcategory) => subcategory.active)
-                                ? "bg-slate-900 text-white"
-                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                                ? "sidebar-menu-action-active"
+                                : "sidebar-menu-action"
                             }`}
                           >
                             All {dealCategory.label}
@@ -152,10 +161,10 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                               href={subcategory.href}
                               scroll={false}
                               onClick={closeSidebar}
-                              className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                              className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
                                 subcategory.active
-                                  ? "bg-slate-900 text-white"
-                                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                                  ? "sidebar-menu-action-active"
+                                  : "sidebar-menu-action"
                               }`}
                             >
                               {subcategory.label}

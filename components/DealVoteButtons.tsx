@@ -22,26 +22,26 @@ const defaultButtonClassName =
 const defaultContainerClassName =
   "inline-flex items-center gap-1 rounded-full border p-1 shadow-sm";
 
-const neutralContainerClassName = "border-slate-200 bg-white/80";
+const neutralContainerClassName = "deal-vote-control-neutral";
 
 const neutralButtonClassName =
-  "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950";
+  "deal-vote-button-neutral";
 
-const neutralScoreClassName = "text-slate-800";
+const neutralScoreClassName = "deal-vote-score-neutral";
 
 const selectedContainerClassNames: Record<VoteDirection, string> = {
-  up: "border-emerald-300 bg-emerald-50",
-  down: "border-rose-300 bg-rose-50",
+  up: "deal-vote-control-up",
+  down: "deal-vote-control-down",
 };
 
 const selectedButtonClassNames: Record<VoteDirection, string> = {
-  up: "border-emerald-600 bg-emerald-600 text-white shadow-md hover:border-emerald-700 hover:bg-emerald-700 hover:text-white",
-  down: "border-rose-600 bg-rose-600 text-white shadow-md hover:border-rose-700 hover:bg-rose-700 hover:text-white",
+  up: "deal-vote-button-up",
+  down: "deal-vote-button-down",
 };
 
 const selectedScoreClassNames: Record<VoteDirection, string> = {
-  up: "text-emerald-700",
-  down: "text-rose-700",
+  up: "deal-vote-score-up",
+  down: "deal-vote-score-down",
 };
 
 function getVoteStorageKey(dealId: string) {
@@ -123,7 +123,7 @@ export default function DealVoteButtons({
 
   return (
     <div
-      className={`${containerClassName} ${
+      className={`deal-vote-control ${containerClassName} ${
         selectedVote ? selectedContainerClassNames[selectedVote] : neutralContainerClassName
       }`}
       aria-label="Deal voting"
@@ -134,7 +134,7 @@ export default function DealVoteButtons({
         onClick={() => vote("up")}
         disabled={isPending}
         aria-pressed={selectedVote === "up"}
-        className={`${buttonClassName} ${
+        className={`deal-vote-button ${buttonClassName} ${
           selectedVote === "up" ? selectedButtonClassNames.up : neutralButtonClassName
         }`}
       >
@@ -142,7 +142,7 @@ export default function DealVoteButtons({
       </button>
       {showScore ? (
         <span
-          className={`${scoreClassName} ${
+          className={`deal-vote-score ${scoreClassName} ${
             selectedVote ? selectedScoreClassNames[selectedVote] : neutralScoreClassName
           }`}
         >
@@ -155,7 +155,7 @@ export default function DealVoteButtons({
         onClick={() => vote("down")}
         disabled={isPending}
         aria-pressed={selectedVote === "down"}
-        className={`${buttonClassName} ${
+        className={`deal-vote-button ${buttonClassName} ${
           selectedVote === "down" ? selectedButtonClassNames.down : neutralButtonClassName
         }`}
       >

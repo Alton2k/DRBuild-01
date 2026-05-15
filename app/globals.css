@@ -260,8 +260,623 @@ html {
   outline-offset: 3px;
 }
 
+#top-search-deals:focus-visible {
+  outline: none;
+}
+
 :where(button, input, select, textarea):disabled {
   cursor: not-allowed;
+}
+
+.sidebar-menu-action {
+  color: #1e293b;
+}
+
+.sidebar-menu-action:hover,
+.sidebar-menu-action-active {
+  color: #e0115f;
+}
+
+:root[data-theme="dark"] .sidebar-menu-action {
+  color: #e2e8f0;
+}
+
+:root[data-theme="dark"] .sidebar-menu-action:hover,
+:root[data-theme="dark"] .sidebar-menu-action-active {
+  color: #e0115f;
+}
+
+.appearance-mode-option {
+  color: #334155;
+}
+
+.appearance-mode-option:hover {
+  color: #e0115f;
+}
+
+:root[data-theme="dark"] .appearance-mode-option {
+  color: #e2e8f0;
+}
+
+:root[data-theme="dark"] .appearance-mode-option:hover {
+  color: #e0115f;
+}
+
+.post-deal-cta {
+  background: #e0115f;
+  border-color: #e0115f;
+  color: #ffffff;
+}
+
+.post-deal-cta:hover,
+.post-deal-cta.is-active {
+  background: #c90f55;
+  border-color: #c90f55;
+  color: #ffffff;
+}
+
+.topbar-account-action {
+  background: rgb(255 255 255 / 0.84);
+  border-color: rgb(15 23 42 / 0.12);
+  color: #334155;
+}
+
+.topbar-account-action:hover,
+.topbar-account-action.is-active {
+  background: #e0115f;
+  border-color: #e0115f;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .topbar-account-action {
+  background: rgb(15 23 42 / 0.88);
+  border-color: rgb(226 232 240 / 0.18);
+  color: #e2e8f0;
+}
+
+:root[data-theme="dark"] .topbar-account-action:hover,
+:root[data-theme="dark"] .topbar-account-action.is-active {
+  background: #e0115f;
+  border-color: #e0115f;
+  color: #ffffff;
+}
+
+.home-page {
+  background: #f8fafc;
+}
+
+:root[data-theme="dark"] .home-page {
+  background: #020617;
+}
+
+.home-panel {
+  position: relative;
+}
+
+.community-feed-controls {
+  background:
+    radial-gradient(circle at 8% 0%, rgb(230 242 79 / 0.42), transparent 34%),
+    linear-gradient(135deg, #ffffff, #f1f5f9);
+  border: 1px solid #dbe3ec;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.86),
+    0 12px 30px rgb(15 23 42 / 0.06);
+}
+
+.community-feed-title {
+  color: #0f172a;
+}
+
+.community-feed-tab {
+  border: 1px solid transparent;
+}
+
+.community-feed-tab-active {
+  background: #e0115f;
+  border-color: #e0115f;
+  color: #ffffff;
+}
+
+.community-feed-tab-idle {
+  background: rgb(255 255 255 / 0.88);
+  border-color: rgb(15 23 42 / 0.1);
+  color: #334155;
+}
+
+.community-feed-tab-idle:hover {
+  background: #ffffff;
+  border-color: rgb(224 17 95 / 0.35);
+  color: #0f172a;
+}
+
+.community-feed-tab-description-active {
+  color: rgb(255 255 255 / 0.78);
+}
+
+.community-feed-tab-description-idle {
+  color: #64748b;
+}
+
+.community-feed-tab-idle:hover .community-feed-tab-description-idle {
+  color: #475569;
+}
+
+.community-feed-periods {
+  border-color: #e2e8f0;
+}
+
+.community-feed-period-active {
+  background: #e0115f;
+  color: #ffffff;
+}
+
+.community-feed-period-idle {
+  color: #475569;
+}
+
+.community-feed-period-idle:hover {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+:root[data-theme="dark"] .community-feed-controls {
+  background:
+    radial-gradient(circle at 8% 0%, rgb(230 242 79 / 0.12), transparent 34%),
+    linear-gradient(135deg, #111827, #020617);
+  border-color: #334155;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 12px 30px rgb(0 0 0 / 0.28);
+}
+
+:root[data-theme="dark"] .community-feed-title {
+  color: #f8fafc;
+}
+
+:root[data-theme="dark"] .community-feed-tab-active {
+  background: #e0115f;
+  border-color: #fb3f85;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .community-feed-tab-idle {
+  background: rgb(2 6 23 / 0.42);
+  border-color: rgb(226 232 240 / 0.08);
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .community-feed-tab-idle:hover {
+  background: rgb(15 23 42 / 0.95);
+  border-color: #475569;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .community-feed-tab-description-idle {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .community-feed-tab-idle:hover .community-feed-tab-description-idle {
+  color: rgb(255 255 255 / 0.78);
+}
+
+:root[data-theme="dark"] .community-feed-periods {
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .community-feed-period-idle {
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .community-feed-period-idle:hover {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.hero-explore-button {
+  background: #e6f24f;
+  color: #0f172a;
+}
+
+.hero-explore-button:hover {
+  background: #dce83f;
+  color: #0f172a;
+}
+
+:root[data-theme="dark"] .hero-explore-button,
+:root[data-theme="dark"] .hero-explore-button:hover {
+  color: #0f172a;
+}
+
+.deal-check-card {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .deal-check-card {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+.deal-check-icon {
+  color: #0f172a;
+}
+
+.deal-check-icon-yellow {
+  background: #e6f24f;
+  border-color: #b9c72f;
+  color: #0f172a;
+}
+
+.deal-check-icon-ruby {
+  background: #e0115f;
+  border-color: #bf0e50;
+  color: #ffffff;
+}
+
+.deal-check-icon-cyan {
+  background: #06b6d4;
+  border-color: #0891b2;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .deal-check-icon-yellow {
+  background: #e6f24f;
+  border-color: #f0fb67;
+  color: #0f172a;
+}
+
+:root[data-theme="dark"] .deal-check-icon-ruby {
+  background: #e0115f;
+  border-color: #fb3f85;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .deal-check-icon-cyan {
+  background: #06b6d4;
+  border-color: #67e8f9;
+  color: #ffffff;
+}
+
+.home-deal-card {
+  background:
+    linear-gradient(90deg, rgb(230 242 79 / 0.22), transparent 42%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.86)),
+    #ffffff;
+  border-color: #dbe3ec;
+}
+
+.home-deal-card-expired {
+  background:
+    linear-gradient(180deg, rgb(255 241 242 / 0.8), rgb(255 255 255 / 0.95)),
+    #ffffff;
+  border-color: rgb(251 113 133 / 0.45);
+}
+
+.home-deal-card-media {
+  background: transparent;
+  border-color: #e2e8f0;
+}
+
+.home-deal-card-actions {
+  border-color: #e2e8f0;
+}
+
+:root[data-theme="dark"] .home-deal-card {
+  background:
+    linear-gradient(90deg, rgb(230 242 79 / 0.08), transparent 42%),
+    linear-gradient(180deg, rgb(15 23 42 / 0.98), rgb(2 6 23 / 0.92)),
+    #0f172a;
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .home-deal-card-expired {
+  background:
+    linear-gradient(180deg, rgb(127 29 29 / 0.24), rgb(15 23 42 / 0.96)),
+    #0f172a;
+  border-color: rgb(251 113 133 / 0.42);
+}
+
+:root[data-theme="dark"] .home-deal-card-media {
+  background: transparent;
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .home-deal-card-actions {
+  border-color: #334155;
+}
+
+.deal-vote-control {
+  color: #334155;
+}
+
+.deal-vote-control-neutral {
+  background: rgb(255 255 255 / 0.92);
+  border-color: #e2e8f0;
+}
+
+.deal-vote-control-up {
+  background: rgb(236 253 245 / 0.95);
+  border-color: rgb(52 211 153 / 0.5);
+}
+
+.deal-vote-control-down {
+  background: rgb(255 241 242 / 0.95);
+  border-color: rgb(251 113 133 / 0.5);
+}
+
+.deal-vote-button-neutral {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+.deal-vote-button-neutral:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.deal-vote-button-up {
+  background: #059669;
+  border-color: #047857;
+  color: #ffffff;
+}
+
+.deal-vote-button-up:hover {
+  background: #047857;
+  border-color: #065f46;
+  color: #ffffff;
+}
+
+.deal-vote-button-down {
+  background: #e11d48;
+  border-color: #be123c;
+  color: #ffffff;
+}
+
+.deal-vote-button-down:hover {
+  background: #be123c;
+  border-color: #9f1239;
+  color: #ffffff;
+}
+
+.deal-vote-score-neutral {
+  color: #1e293b;
+}
+
+.deal-vote-score-up {
+  color: #047857;
+}
+
+.deal-vote-score-down {
+  color: #be123c;
+}
+
+:root[data-theme="dark"] .deal-vote-control-neutral {
+  background: rgb(2 6 23 / 0.78);
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .deal-vote-control-up {
+  background: rgb(6 78 59 / 0.24);
+  border-color: rgb(52 211 153 / 0.48);
+}
+
+:root[data-theme="dark"] .deal-vote-control-down {
+  background: rgb(127 29 29 / 0.3);
+  border-color: rgb(251 113 133 / 0.5);
+}
+
+:root[data-theme="dark"] .deal-vote-button-neutral {
+  background: #0f172a;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .deal-vote-button-neutral:hover {
+  background: #1e293b;
+  border-color: #64748b;
+  color: #f8fafc;
+}
+
+:root[data-theme="dark"] .deal-vote-button-up {
+  background: #10b981;
+  border-color: #34d399;
+  color: #022c22;
+}
+
+:root[data-theme="dark"] .deal-vote-button-up:hover {
+  background: #34d399;
+  border-color: #6ee7b7;
+  color: #022c22;
+}
+
+:root[data-theme="dark"] .deal-vote-button-down {
+  background: #fb7185;
+  border-color: #fda4af;
+  color: #450a0a;
+}
+
+:root[data-theme="dark"] .deal-vote-button-down:hover {
+  background: #fda4af;
+  border-color: #fecdd3;
+  color: #450a0a;
+}
+
+:root[data-theme="dark"] .deal-vote-score-neutral {
+  color: #e2e8f0;
+}
+
+:root[data-theme="dark"] .deal-vote-score-up {
+  color: #6ee7b7;
+}
+
+:root[data-theme="dark"] .deal-vote-score-down {
+  color: #fda4af;
+}
+
+.deal-detail-page {
+  background: #f8fafc;
+}
+
+.deal-detail-back-link {
+  color: #475569;
+}
+
+.deal-detail-back-link:hover {
+  color: #0f172a;
+}
+
+.deal-detail-hero {
+  background:
+    linear-gradient(90deg, rgb(230 242 79 / 0.22), transparent 44%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.9)),
+    #ffffff;
+  border-color: #dbe3ec;
+}
+
+.deal-detail-header {
+  border-color: #e2e8f0;
+}
+
+.deal-detail-media {
+  align-self: start;
+  max-width: 320px;
+  width: 100%;
+}
+
+.deal-detail-actions {
+  color: #475569;
+}
+
+.deal-detail-primary-action {
+  background: #e0115f;
+  color: #ffffff;
+}
+
+.deal-detail-primary-action:hover {
+  background: #c90f55;
+  color: #ffffff;
+}
+
+.deal-detail-panel {
+  background:
+    radial-gradient(circle at 0% 0%, rgb(230 242 79 / 0.18), transparent 30%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.9)),
+    #ffffff;
+  border-color: #dbe3ec;
+}
+
+.deal-detail-more-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.deal-detail-more-panel {
+  background: rgb(255 255 255 / 0.98);
+  border-color: #dbe3ec;
+}
+
+.deal-detail-more-action {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
+.deal-detail-more-action:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.deal-image-carousel {
+  width: 100%;
+}
+
+.deal-image-carousel-stage {
+  background: rgb(255 255 255 / 0.34);
+  border-color: rgb(203 213 225 / 0.8);
+}
+
+.deal-image-carousel-stage-size {
+  height: 240px;
+  width: 260px;
+}
+
+.deal-image-carousel-main-image {
+  max-height: 76%;
+  max-width: 76%;
+}
+
+.deal-image-carousel-thumbs {
+  scrollbar-width: thin;
+}
+
+:root[data-theme="dark"] .deal-detail-page {
+  background: #020617;
+}
+
+:root[data-theme="dark"] .deal-detail-back-link {
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .deal-detail-back-link:hover {
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .deal-detail-hero {
+  background:
+    linear-gradient(90deg, rgb(230 242 79 / 0.08), transparent 44%),
+    linear-gradient(180deg, rgb(15 23 42 / 0.98), rgb(2 6 23 / 0.92)),
+    #0f172a;
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .deal-detail-header {
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .deal-detail-primary-action {
+  background: #e0115f;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .deal-detail-primary-action:hover {
+  background: #fb3f85;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .deal-detail-panel {
+  background:
+    radial-gradient(circle at 0% 0%, rgb(230 242 79 / 0.06), transparent 30%),
+    linear-gradient(180deg, rgb(15 23 42 / 0.98), rgb(2 6 23 / 0.92)),
+    #0f172a;
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .deal-detail-more-panel {
+  background: rgb(15 23 42 / 0.98);
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .deal-detail-more-action {
+  background: #0f172a;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .deal-detail-more-action:hover {
+  background: #1e293b;
+  border-color: #64748b;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .deal-image-carousel {
+  background: transparent;
+}
+
+:root[data-theme="dark"] .deal-image-carousel-stage {
+  background: rgb(2 6 23 / 0.56);
+  border-color: #334155;
 }
 
 input::placeholder,

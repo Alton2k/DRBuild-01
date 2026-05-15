@@ -38,7 +38,7 @@ export const dealCategories: DealCategory[] = [
     subcategories: ["Shoes", "Clothes", "Activewear", "Fashion Accessories"],
   },
   {
-    name: "Do It Yourself",
+    name: "D.I.Y",
     subcategories: [],
   },
   {

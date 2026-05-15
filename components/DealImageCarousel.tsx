@@ -18,7 +18,7 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
 
   if (!activeImage) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 px-6 text-center text-sm text-slate-500">
+      <div className="deal-image-carousel deal-image-carousel-stage deal-image-carousel-stage-size flex items-center justify-center rounded-2xl border px-6 text-center text-sm text-slate-500">
         No image submitted
       </div>
     );
@@ -33,12 +33,34 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
   };
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
-      <div className="relative flex min-h-[320px] items-center justify-center">
+    <div className="deal-image-carousel grid grid-cols-[40px_minmax(0,1fr)] gap-2 overflow-hidden">
+      {hasMultipleImages ? (
+        <div className="deal-image-carousel-thumbs flex max-h-[240px] flex-col gap-2 overflow-y-auto">
+          {images.map((image, index) => (
+            <button
+              key={`${image.slice(0, 32)}-${index}`}
+              type="button"
+              onClick={() => setActiveIndex(index)}
+              className={`aspect-square w-full shrink-0 overflow-hidden rounded-md border bg-slate-50 transition ${
+                index === activeIndex ? "border-slate-900 opacity-100" : "border-slate-200 opacity-45 hover:opacity-80"
+              }`}
+              aria-label={`Show deal photo ${index + 1}`}
+            >
+              <UserImage src={image} alt="" className="h-full w-full object-contain" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div aria-hidden="true" />
+      )}
+
+      <div
+        className="deal-image-carousel-stage deal-image-carousel-stage-size relative flex items-center justify-center overflow-hidden rounded-2xl border"
+      >
         <UserImage
           src={activeImage}
           alt={title}
-          className="h-full max-h-[520px] w-full object-contain p-6"
+          className="deal-image-carousel-main-image object-contain"
         />
 
         {hasMultipleImages ? (
@@ -66,23 +88,6 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
         ) : null}
       </div>
 
-      {hasMultipleImages ? (
-        <div className="flex gap-2 overflow-x-auto border-t border-slate-200 bg-white p-3">
-          {images.map((image, index) => (
-            <button
-              key={`${image.slice(0, 32)}-${index}`}
-              type="button"
-              onClick={() => setActiveIndex(index)}
-              className={`h-16 w-20 shrink-0 overflow-hidden rounded-xl border bg-slate-50 ${
-                index === activeIndex ? "border-slate-900" : "border-slate-200"
-              }`}
-              aria-label={`Show deal photo ${index + 1}`}
-            >
-              <UserImage src={image} alt="" className="h-full w-full object-contain" />
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
