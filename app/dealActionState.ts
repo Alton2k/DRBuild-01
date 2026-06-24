@@ -3,9 +3,11 @@ export type DealFormField =
   | "url"
   | "price"
   | "originalPrice"
+  | "shippingCost"
   | "store"
   | "category"
   | "subCategory"
+  | "expiresAt"
   | "description"
   | "imageUrl";
 

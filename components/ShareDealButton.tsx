@@ -17,11 +17,13 @@ export default function ShareDealButton({
   href,
   text,
   className,
+  disabled = false,
 }: {
   title: string;
   href: string;
   text?: string;
   className?: string;
+  disabled?: boolean;
 }) {
   const [status, setStatus] = useState<ShareStatus>("idle");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,6 +49,10 @@ export default function ShareDealButton({
   };
 
   const shareDeal = async () => {
+    if (disabled) {
+      return;
+    }
+
     const url = getAbsoluteDealUrl(href);
 
     try {
@@ -82,11 +88,15 @@ export default function ShareDealButton({
     <span className="inline-flex items-center">
       <button
         type="button"
-        aria-label="Share deal"
+        aria-label={disabled ? "Sharing is unavailable for expired deals" : "Share deal"}
         onClick={shareDeal}
+        disabled={disabled}
         className={
-          className ??
-          "inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+          className
+            ? `${className} ${disabled ? "cursor-not-allowed opacity-45" : ""}`.trim()
+            : `inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 ${
+                disabled ? "cursor-not-allowed opacity-60" : ""
+              }`
         }
       >
         <svg

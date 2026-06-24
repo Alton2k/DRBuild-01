@@ -54,7 +54,7 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
       <button
         type="button"
         onClick={openSidebar}
-        className="mt-4 inline-flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition hover:border-[#e0115f]/40 hover:bg-white hover:text-[#e0115f]"
+        className="mt-4 inline-flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition hover:border-[#dc115e]/40 hover:bg-white hover:text-[#dc115e]"
       >
         <span>Browse all categories</span>
         <span aria-hidden="true" className="text-slate-400">
@@ -77,8 +77,8 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
               isOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >
-            <div className="flex items-center justify-between border-b border-slate-200 bg-[#e6f24f] px-5 py-4">
-              <h2 className="truncate text-xl font-bold text-black">Categories</h2>
+            <div className="site-menu-header flex items-center justify-between border-b px-5 py-4">
+              <h2 className="truncate text-xl font-bold">Categories</h2>
               <button
                 type="button"
                 onClick={closeSidebar}
@@ -113,7 +113,7 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                         <button
                           type="button"
                           onClick={() => setOpenCategory(isExpanded ? "" : dealCategory.label)}
-                          className={`flex w-full items-center justify-between rounded-lg px-1 py-3 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
+                          className={`flex w-full items-center justify-between rounded-lg px-1 py-3 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                             dealCategory.active
                               ? "sidebar-menu-action-active"
                               : "sidebar-menu-action"
@@ -130,7 +130,7 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                           href={dealCategory.href}
                           scroll={false}
                           onClick={closeSidebar}
-                          className={`flex items-center justify-between rounded-lg px-1 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
+                          className={`flex items-center justify-between rounded-lg px-1 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                             dealCategory.active
                               ? "sidebar-menu-action-active"
                               : "sidebar-menu-action"
@@ -147,7 +147,7 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                             href={dealCategory.href}
                             scroll={false}
                             onClick={closeSidebar}
-                            className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
+                            className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                               dealCategory.active && !dealCategory.subcategories.some((subcategory) => subcategory.active)
                                 ? "sidebar-menu-action-active"
                                 : "sidebar-menu-action"
@@ -161,7 +161,7 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                               href={subcategory.href}
                               scroll={false}
                               onClick={closeSidebar}
-                              className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
+                              className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                                 subcategory.active
                                   ? "sidebar-menu-action-active"
                                   : "sidebar-menu-action"

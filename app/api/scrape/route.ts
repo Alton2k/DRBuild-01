@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 import { type NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright";
+import { validateDealUrl } from "@/lib/dealUrlSecurity";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,10 @@ type ScrapedMetadata = {
   description: string;
   store?: string;
   price?: string;
+};
+
+type ExtractedMetadata = ScrapedMetadata & {
+  imageCandidates?: string[];
 };
 
 type UrlValidationResult =
@@ -90,7 +95,12 @@ function validateUrl(value: unknown): UrlValidationResult {
       return { ok: false, error: "Private or local URLs cannot be scraped" };
     }
 
-    return { ok: true, url: parsed.toString() };
+    const dealUrlValidation = validateDealUrl(parsed.toString());
+    if (!dealUrlValidation.ok) {
+      return { ok: false, error: dealUrlValidation.error };
+    }
+
+    return { ok: true, url: dealUrlValidation.url };
   } catch {
     return { ok: false, error: "Invalid or missing URL" };
   }
@@ -128,6 +138,42 @@ function normalizeImageUrl(value: string, baseUrl: string) {
   } catch {
     return "";
   }
+}
+
+function isLikelyPlaceholderImage(value: string) {
+  const normalized = value.toLowerCase();
+
+  return (
+    normalized.includes("placeholder") ||
+    normalized.includes("no-image") ||
+    normalized.includes("no_image") ||
+    normalized.includes("default-image") ||
+    normalized.includes("default_image") ||
+    normalized.includes("shopee-logo") ||
+    normalized.includes("shopee_logo") ||
+    normalized.includes("shopee-icon") ||
+    normalized.includes("shopee_icon") ||
+    normalized.includes("/web_main_logo/") ||
+    normalized.includes("/assets/logo") ||
+    normalized.includes("/static/logo") ||
+    normalized.includes("worldmap")
+  );
+}
+
+function chooseImageUrl(values: string[], baseUrl: string) {
+  const seen = new Set<string>();
+
+  for (const value of values) {
+    const imageUrl = normalizeImageUrl(cleanText(value), baseUrl);
+    if (!imageUrl || seen.has(imageUrl) || isLikelyPlaceholderImage(imageUrl)) {
+      continue;
+    }
+
+    seen.add(imageUrl);
+    return imageUrl;
+  }
+
+  return "";
 }
 
 function hasMetadata(data: ScrapedMetadata) {
@@ -211,7 +257,7 @@ async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
       userAgent: USER_AGENT,
       viewport: { width: 1366, height: 900 },
       locale: "en-MY",
-      timezoneId: "Asia/Kuala_Lumpur",
+      timezoneId: "Asia/Singapore",
       extraHTTPHeaders: {
         "Accept-Language": "en-MY,en;q=0.9,ms;q=0.8",
       },
@@ -236,10 +282,10 @@ async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
       )
       .catch(() => undefined);
 
-    const extracted = await page.evaluate(() => {
+    const extracted = await page.evaluate((): ExtractedMetadata => {
       type Candidate = {
         title?: string;
-        image?: string;
+        image?: string | string[];
         description?: string;
         store?: string;
         price?: string;
@@ -278,7 +324,9 @@ async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
               typeof record.brand === "object" && record.brand
                 ? clean((record.brand as Record<string, unknown>).name)
                 : clean(record.brand);
-            const image = Array.isArray(record.image) ? clean(record.image[0]) : clean(record.image);
+            const image = Array.isArray(record.image)
+              ? record.image.map(clean).filter(Boolean)
+              : clean(record.image);
 
             candidates.push({
               title: clean(record.name),
@@ -303,11 +351,16 @@ async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
         return candidates;
       };
 
+      const getImages = (value: Candidate | undefined) => {
+        if (!value?.image) return [];
+        return Array.isArray(value.image) ? value.image : [value.image];
+      };
+
       const visibleText = (selector: string) =>
         clean(document.querySelector<HTMLElement>(selector)?.innerText);
 
-      const imageFromDom = () => {
-        const images = Array.from(document.images)
+      const imageFromDom = () =>
+        Array.from(document.images)
           .filter((image) => image.currentSrc || image.src)
           .map((image) => ({
             src: image.currentSrc || image.src,
@@ -315,9 +368,98 @@ async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
               (image.naturalWidth || 0) * (image.naturalHeight || 0) +
               (image.alt.toLowerCase().includes("product") ? 100_000 : 0),
           }))
-          .sort((a, b) => b.score - a.score);
+          .sort((a, b) => b.score - a.score)
+          .map((image) => clean(image.src))
+          .filter(Boolean);
 
-        return clean(images[0]?.src);
+      const imagesFromAttributes = () => {
+        const candidates: string[] = [];
+        const selectors = [
+          'meta[property="og:image"]',
+          'meta[property="og:image:secure_url"]',
+          'meta[name="twitter:image"]',
+          'meta[itemprop="image"]',
+          'link[rel="image_src"]',
+        ];
+
+        selectors.forEach((selector) => {
+          const element = document.querySelector<HTMLMetaElement | HTMLLinkElement>(selector);
+          const value =
+            element instanceof HTMLMetaElement
+              ? element.content
+              : element instanceof HTMLLinkElement
+              ? element.href
+              : "";
+          if (clean(value)) candidates.push(clean(value));
+        });
+
+        document.querySelectorAll<HTMLElement>("[style*='background-image']").forEach((element) => {
+          const styleValue = element.style.backgroundImage || element.getAttribute("style") || "";
+          const match = styleValue.match(/url\((['"]?)(.*?)\1\)/i);
+          if (clean(match?.[2])) candidates.push(clean(match?.[2]));
+        });
+
+        return candidates;
+      };
+
+      const imagesFromScripts = () => {
+        const candidates: string[] = [];
+        const shopeeFileHosts = [
+          "https://down-my.img.susercontent.com/file/",
+          "https://cf.shopee.com.my/file/",
+        ];
+
+        const pushShopeeImageId = (value: string) => {
+          const cleaned = clean(value);
+          if (!/^(?:my|sg|id|th|vn|ph|tw|br|mx|co|cl)-[a-z0-9-]{12,}$/i.test(cleaned)) {
+            return;
+          }
+
+          shopeeFileHosts.forEach((host) => candidates.push(`${host}${cleaned}`));
+        };
+
+        const visit = (value: unknown, key = "") => {
+          if (!value) return;
+
+          if (typeof value === "string") {
+            const cleaned = clean(value);
+            if (/^https?:\/\/[^"'\s]+(?:susercontent|shopee)[^"'\s]+/i.test(cleaned)) {
+              candidates.push(cleaned);
+            }
+
+            if (/image|thumb|cover/i.test(key)) {
+              pushShopeeImageId(cleaned);
+            }
+            return;
+          }
+
+          if (Array.isArray(value)) {
+            value.forEach((item) => visit(item, key));
+            return;
+          }
+
+          if (typeof value !== "object") return;
+
+          Object.entries(value as Record<string, unknown>).forEach(([recordKey, recordValue]) => {
+            visit(recordValue, recordKey);
+          });
+        };
+
+        document.querySelectorAll<HTMLScriptElement>("script").forEach((script) => {
+          const text = script.textContent ?? "";
+          const urlMatches = text.match(/https?:\\?\/\\?\/[^"'\s<>{}]+(?:susercontent|shopee)[^"'\s<>{}]*/gi) ?? [];
+          urlMatches.forEach((match) => candidates.push(match.replace(/\\\//g, "/")));
+
+          if (!text.trim().startsWith("{") && !text.trim().startsWith("[")) return;
+
+          try {
+            visit(JSON.parse(text));
+          } catch {
+            // Non-JSON scripts are already handled by the URL regex above.
+          }
+        });
+
+        return candidates;
       };
 
       const priceFromDom = () => {
@@ -370,9 +512,18 @@ async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
         price: priceFromDom(),
       };
 
+      const imageCandidates = [
+        ...getImages(jsonLd),
+        ...imagesFromAttributes(),
+        ...imagesFromScripts(),
+        ...getImages(openGraph),
+        ...getImages(dom),
+      ];
+
       return {
         title: jsonLd?.title || openGraph.title || dom.title || "",
-        image: jsonLd?.image || openGraph.image || dom.image || "",
+        image: imageCandidates[0] || "",
+        imageCandidates,
         description: jsonLd?.description || openGraph.description || dom.description || "",
         store: jsonLd?.store || openGraph.store || "",
         price: jsonLd?.price || openGraph.price || dom.price || "",
@@ -381,7 +532,13 @@ async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
 
     return {
       title: "",
-      image: normalizeImageUrl(cleanText(extracted.image), url),
+      image: chooseImageUrl(
+        [
+          ...(extracted.imageCandidates ?? []),
+          ...(Array.isArray(extracted.image) ? extracted.image : [extracted.image]),
+        ],
+        url,
+      ),
       description: "",
       store: cleanText(extracted.store),
       price: cleanText(extracted.price),

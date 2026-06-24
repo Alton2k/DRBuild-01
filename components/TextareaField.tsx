@@ -50,10 +50,10 @@ export default function TextareaField({
         placeholder={placeholder}
         rows={rows}
         onChange={(event) => onChange(event.target.value)}
-        className={`block w-full rounded-2xl border px-4 py-3 text-sm leading-6 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus-visible:bg-white focus-visible:ring-4 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 disabled:opacity-80 ${
+        className={`post-form-field block w-full rounded-2xl border px-4 py-3 text-sm leading-6 shadow-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-80 ${
           error
-            ? "border-rose-300 bg-rose-50 focus-visible:border-rose-400 focus-visible:ring-rose-100"
-            : "border-slate-200 bg-slate-50 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:ring-slate-200"
+            ? "post-form-field-error"
+            : ""
         }`}
         aria-invalid={Boolean(error)}
         aria-describedby={describedBy || undefined}

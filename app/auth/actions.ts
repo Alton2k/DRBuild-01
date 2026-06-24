@@ -35,6 +35,10 @@ function getUsername(email: string) {
   return email.split("@")[0]?.replace(/[^a-z0-9_-]/gi, "") || "member";
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 async function strapiAuthRequest(mode: AuthMode, email: string, password: string) {
   const endpoint = mode === "signup" ? "/api/auth/local/register" : "/api/auth/local";
   const body =
@@ -71,14 +75,14 @@ async function strapiAuthRequest(mode: AuthMode, email: string, password: string
   const responseBody = await response.json().catch(() => null);
 
   if (!response.ok) {
+    const fallbackMessage = mode === "signup" ? "Could not create this account." : "Invalid email or password.";
+
     return {
       ok: false as const,
       message:
-        typeof responseBody?.error?.message === "string"
+        mode === "signup" && typeof responseBody?.error?.message === "string"
           ? responseBody.error.message
-          : mode === "signup"
-            ? "Could not create this account."
-            : "Invalid email or password.",
+          : fallbackMessage,
     };
   }
 
@@ -110,8 +114,16 @@ export async function emailAuthAction(
     return { ok: false, message: "Email and password are required." };
   }
 
+  if (!isValidEmail(email)) {
+    return { ok: false, message: "Enter a valid email address." };
+  }
+
   if (password.length < 6) {
     return { ok: false, message: "Password must be at least 6 characters." };
+  }
+
+  if (mode === "signup" && (!/\d/.test(password) || !/[^A-Za-z0-9]/.test(password))) {
+    return { ok: false, message: "Password must include a number and a symbol." };
   }
 
   const result = await strapiAuthRequest(mode, email, password);

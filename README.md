@@ -25,6 +25,25 @@ Auth:
 - JWT is stored by Next.js in an HTTP-only cookie named `dealmy_strapi_jwt`
 - Email verification is currently disabled until an email provider is chosen
 
+## Current Features
+
+- Searchable and paginated deal feed with category and subcategory filters
+- Feed ranking by community score, comment count, or newest deals
+- Malaysia-time daily, weekly, and monthly ranking periods
+- Product metadata scraping with Playwright during deal submission
+- Deal image galleries, shipping cost, expiration time, and rich descriptions
+- Automated duplicate, link safety, content risk, and moderation checks
+- Anonymous deal voting with transactional score updates
+- Threaded comments with likes and ownership-based deletion
+- Deal reporting with duplicate-report and rate-limit protection
+- Saved deals for signed-in users
+- Profile activity for posted deals, saved deals, comments, vote stats, and follow counts
+- Public member profiles with profile privacy controls and follow/unfollow support
+- Account settings for avatar, username, bio, theme, notifications, and privacy preferences
+- Admin moderation for deals, reports, comments, and users
+- Sitemap, robots rules, canonical metadata, and Open Graph branding
+- About, contact, privacy, terms, community rules, and affiliate disclosure pages
+
 ## Partner AI Setup Summary
 
 Use this section if an AI assistant is setting up the project on another computer.
@@ -72,8 +91,14 @@ app/auth/actions.ts
 lib/auth.ts
 lib/deals.ts
 lib/comments.ts
+lib/savedDeals.ts
+lib/userSettings.ts
+lib/follows.ts
 lib/strapi.ts
 backend/src/api/deal/content-types/deal/schema.json
+backend/src/api/saved-deal/content-types/saved-deal/schema.json
+backend/src/api/user-setting/content-types/user-setting/schema.json
+backend/src/api/follow/content-types/follow/schema.json
 backend/src/index.ts
 ```
 
@@ -146,6 +171,7 @@ Template:
 STRAPI_URL=http://127.0.0.1:1337
 STRAPI_API_TOKEN=paste_your_strapi_api_token_here
 ADMIN_EMAILS=local@example.com
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
 Notes:
@@ -154,6 +180,7 @@ Notes:
 - `STRAPI_API_TOKEN` must be created in Strapi Admin.
 - `ADMIN_EMAILS` is the website user email allowed to open `/admin`.
 - `ADMIN_EMAILS` is not the Strapi admin email unless the same email is also used for the website login.
+- `NEXT_PUBLIC_SITE_URL` is used for canonical and sitemap URLs. Set it to the deployed frontend origin in production.
 
 Create this backend env file:
 
@@ -181,6 +208,10 @@ DATABASE_CLIENT=postgres
 DATABASE_URL=postgresql://user:password@host/database?sslmode=require
 DATABASE_SSL=true
 DATABASE_SSL_REJECT_UNAUTHORIZED=false
+DATABASE_SCHEMA=public
+DATABASE_POOL_MIN=2
+DATABASE_POOL_MAX=10
+DATABASE_CONNECTION_TIMEOUT=60000
 
 # Optional, only used if email verification is enabled later
 FRONTEND_URL=http://localhost:3000/auth?message=email-confirmed
@@ -322,6 +353,9 @@ Comment
 Deal Vote
 Deal Report
 Deal Category
+Saved Deal
+User Setting
+Follow
 ```
 
 Deal moderation field:
@@ -391,6 +425,91 @@ ADMIN_EMAILS=admin@example.com
 
 Then restart Next.js.
 
+## Community Actions
+
+Voting, commenting, reporting, and saving are implemented through server actions in:
+
+```text
+app/actions.ts
+```
+
+Important behavior:
+
+- Anonymous voters receive a long-lived viewer cookie.
+- A viewer can have only one active vote per deal.
+- Vote changes and deal score updates run in one backend transaction.
+- Duplicate votes, reports, and saved deals are protected by database constraints.
+- Comments support replies, likes, and deletion by their author.
+- Signed-in users can save deals and view them from `/profile`.
+- Voting, commenting, and reporting include basic abuse rate limiting.
+- Signed-in users can follow public member profiles when that member allows followers.
+
+Database migrations for uniqueness constraints are stored in:
+
+```text
+backend/database/migrations/
+```
+
+## Deal Expiration
+
+Deals can include an expiration date. Public queries hide expired deals, while admins can manually mark a deal as expired.
+
+The homepage and deal cards display expiration status through:
+
+```text
+components/ExpirationTime.tsx
+```
+
+## Account Settings and Profiles
+
+Signed-in users manage profile and preference data at `/settings`.
+
+Settings include:
+
+- Avatar, public username, and short bio
+- Light, dark, or system theme preference
+- Notification preference toggles
+- Privacy toggles for public profile visibility, join date, activity stats, saved deals, and followers
+
+Profile settings are stored in the Strapi `User Setting` content type and handled by:
+
+```text
+app/settings/page.tsx
+app/settings/actions.ts
+lib/userSettings.ts
+backend/src/api/user-setting/content-types/user-setting/schema.json
+```
+
+Public profiles are available at `/profile/[userId]`, where `[userId]` can resolve from a profile username or fallback user identity. Follow relationships are stored in the Strapi `Follow` content type.
+
+## Public Routes
+
+Main application routes:
+
+```text
+/             Deal feed and rankings
+/post         Submit a deal
+/deal/[id]    Deal details, voting, comments, saving, and reporting
+/auth         Register or log in
+/profile      Posted deals, saved deals, comments, and account details
+/profile/[id] Public member profile
+/settings     Account profile, appearance, notification, privacy, and security settings
+/admin        Moderation dashboard
+```
+
+Information and policy routes:
+
+```text
+/about
+/affiliate-disclosure
+/community-rules
+/contact
+/privacy
+/terms
+```
+
+SEO routes are generated by `app/sitemap.ts` and `app/robots.ts`.
+
 ## Useful Commands
 
 From project root:
@@ -399,6 +518,8 @@ From project root:
 npm.cmd run dev
 npm.cmd run build
 npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd run verify
 npm.cmd run backend:dev
 npm.cmd run backend:build
 ```
@@ -411,9 +532,53 @@ npm.cmd run build
 npm.cmd run start
 ```
 
+## Operational Readiness Checks
+
+Run these before handing a build to another person or deploying:
+
+```powershell
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+npm.cmd run backend:build
+```
+
+Or run the combined root check:
+
+```powershell
+npm.cmd run verify
+```
+
+Expected result:
+
+- Next.js compiles successfully.
+- TypeScript passes for the frontend app.
+- ESLint passes for committed frontend/shared code.
+- Strapi compiles TypeScript and builds the admin panel.
+
+Operational notes:
+
+- Start Strapi before testing dynamic frontend flows that need data.
+- Keep `STRAPI_API_TOKEN`, `APP_KEYS`, `JWT_SECRET`, and database credentials out of Git.
+- Use PostgreSQL for shared, staging, and production environments. SQLite is only for local single-developer use.
+- Strapi database migrations in `backend/database/migrations/` are additive and idempotent where practical. They run through Strapi's migration system when the backend starts against a database that has not recorded them.
+- Schedule production migration runs during a quiet window. Index creation can briefly lock large tables depending on the database provider.
+- After deployment, smoke-test `/`, `/post`, `/auth`, `/profile`, `/settings`, `/admin`, and one `/deal/[id]` page.
+
+## Testing Strategy
+
+There is currently no unit or end-to-end test framework configured for this repository. Playwright is installed because the product metadata scraper uses it at runtime; it is not yet wired as an app test runner.
+
+Recommended staged test setup:
+
+1. Add a lightweight unit test runner such as Vitest for pure helpers in `lib/`, starting with Strapi response parsing, URL safety, description sanitization, moderation validation, and account settings normalization.
+2. Add server-action unit or integration tests around posting validation, vote/report/save duplicate handling, comment validation, and admin authorization checks.
+3. Add Playwright end-to-end smoke tests after test data setup is reliable: auth, post deal, vote, save, comment, report, admin moderation, profile/settings refresh.
+4. Run tests in CI with PostgreSQL for backend flows so migration and uniqueness behavior matches production more closely than SQLite.
+
 ## Reset Local Strapi Content
 
-To clear deals, comments, votes, reports, categories, and website users while keeping Strapi structure/admin setup:
+To clear deals, comments, votes, reports, saved deals, follows, user settings, categories, and website users while keeping Strapi structure/admin setup:
 
 Dry run:
 

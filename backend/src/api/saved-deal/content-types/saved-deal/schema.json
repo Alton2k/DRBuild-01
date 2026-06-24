@@ -1,0 +1,28 @@
+{
+  "kind": "collectionType",
+  "collectionName": "saved_deals",
+  "info": {
+    "singularName": "saved-deal",
+    "pluralName": "saved-deals",
+    "displayName": "Saved Deal"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "userId": {
+      "type": "string",
+      "required": true
+    },
+    "dealDocumentId": {
+      "type": "string",
+      "required": true
+    },
+    "deal": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::deal.deal",
+      "inversedBy": "savedDeals"
+    }
+  }
+}

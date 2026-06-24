@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useActionState,
   useCallback,
@@ -16,19 +17,25 @@ import { initialDealActionState } from "../dealActionState";
 import FormContainer from "@/components/FormContainer";
 import InputField from "@/components/InputField";
 import SelectField from "@/components/SelectField";
-import TextareaField from "@/components/TextareaField";
 import UserImage from "@/components/UserImage";
 import { detectDealCategory } from "@/lib/categoryDetection";
 import { categoryOptions, getCategoryByName } from "@/lib/categories";
+import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
+import { isProcessableDealUrl, validateDealUrl } from "@/lib/dealUrlSecurity";
+import { formatMyrPrice } from "@/lib/formatters";
 
 type DealFormState = {
   title: string;
   url: string;
   price: string;
   originalPrice: string;
+  shippingMode: string;
+  shippingCost: string;
   store: string;
   category: string;
   subCategory: string;
+  expirationMode: string;
+  expiresAt: string;
   description: string;
   imageName: string;
   imageUrl: string;
@@ -60,9 +67,13 @@ const initialFormState: DealFormState = {
   url: "",
   price: "",
   originalPrice: "",
+  shippingMode: "paid",
+  shippingCost: "",
   store: "Online",
   category: "",
   subCategory: "",
+  expirationMode: "none",
+  expiresAt: "",
   description: "",
   imageName: "",
   imageUrl: "",
@@ -75,7 +86,8 @@ const initialFormState: DealFormState = {
 const maxSourceImageBytes = 8_000_000;
 const maxCompressedDataUrlLength = 110_000;
 const maxImageDimension = 820;
-const maxGalleryImages = 5;
+const maxGalleryImages = 8;
+const maxDescriptionImages = 10;
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -135,15 +147,12 @@ const initialScrapeSummary: ScrapeSummary = {
   missing: [],
 };
 
-const steps = ["Link", "Details", "Price", "Review"];
-const stepDescriptions = [
-  "Paste the product or promo link.",
-  "Add the title, notes, and main image.",
-  "Set pricing and category.",
-  "Check everything before posting.",
-];
+const steps = ["Link", "Details", "Description", "Price", "Review"];
 const finalStep = steps.length - 1;
 
+function countDescriptionImages(html: string) {
+  return html.match(/<img\b/gi)?.length ?? 0;
+}
 function formatReviewPrice(value: string) {
   const numberValue = Number(value);
 
@@ -151,11 +160,68 @@ function formatReviewPrice(value: string) {
     return "-";
   }
 
-  return new Intl.NumberFormat("en-MY", {
-    style: "currency",
-    currency: "MYR",
-    maximumFractionDigits: 2,
-  }).format(numberValue);
+  return formatMyrPrice(numberValue);
+}
+
+function formatReviewShipping(mode: string, cost: string) {
+  if (mode === "free") {
+    return "Free shipping";
+  }
+
+  return cost.trim() ? formatReviewPrice(cost) : "-";
+}
+
+function formatReviewDateTime(value: string) {
+  if (!value.trim()) {
+    return "No expiry date";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-MY", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
+}
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatDateTimeInputValue(date: Date) {
+  return [
+    `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`,
+    `${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`,
+  ].join("T");
+}
+
+function parseDateTimeInputValue(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day, hour, minute] = match.map(Number);
+  const parsed = new Date(year, month - 1, day, hour, minute);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getCalendarDays(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOffset = new Date(year, month, 1).getDay();
+
+  return [
+    ...Array.from({ length: firstDayOffset }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
 }
 
 function ReviewField({
@@ -212,7 +278,7 @@ function RemoveIcon() {
   );
 }
 
-function UploadIcon() {
+function CalendarIcon() {
   return (
     <svg
       aria-hidden="true"
@@ -222,12 +288,557 @@ function UploadIcon() {
       stroke="currentColor"
       strokeLinecap="round"
       strokeLinejoin="round"
-      strokeWidth="2"
+      strokeWidth="2.5"
     >
-      <path d="M12 3v12" />
-      <path d="m7 8 5-5 5 5" />
-      <path d="M5 15v4h14v-4" />
+      <path d="M8 2v4" />
+      <path d="M16 2v4" />
+      <rect width="18" height="18" x="3" y="4" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M8 14h.01" />
+      <path d="M12 14h.01" />
+      <path d="M16 14h.01" />
+      <path d="M8 18h.01" />
+      <path d="M12 18h.01" />
     </svg>
+  );
+}
+
+function StepIcon({ step }: { step: number }) {
+  const commonProps = {
+    "aria-hidden": true,
+    viewBox: "0 0 24 24",
+    className: "h-4 w-4",
+    fill: "none",
+    stroke: "currentColor",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: "2.4",
+  };
+
+  if (step === 0) {
+    return (
+      <svg {...commonProps}>
+        <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+        <path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1" />
+      </svg>
+    );
+  }
+
+  if (step === 1) {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 5h16" />
+        <path d="M4 12h10" />
+        <path d="M4 19h7" />
+        <path d="m15 17 2 2 4-4" />
+      </svg>
+    );
+  }
+
+  if (step === 2) {
+    return (
+      <svg {...commonProps}>
+        <path d="M7 7h10" />
+        <path d="M7 12h10" />
+        <path d="M7 17h6" />
+        <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M9 11 12 14 22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+
+function RichEditorIcon({ name }: { name: "bold" | "strike" | "italic" | "list" | "line" | "image" | "close" | "left" | "center" }) {
+  const commonProps = {
+    "aria-hidden": true,
+    viewBox: "0 0 24 24",
+    className: "h-4 w-4",
+    fill: "none",
+    stroke: "currentColor",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: "2.2",
+  };
+
+  if (name === "bold") {
+    return (
+      <svg {...commonProps}>
+        <path d="M7 5h6a4 4 0 0 1 0 8H7z" />
+        <path d="M7 13h7a4 4 0 0 1 0 8H7z" />
+      </svg>
+    );
+  }
+
+  if (name === "strike") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 12h16" />
+        <path d="M16 6.5A5 5 0 0 0 12 5c-2.2 0-4 1.1-4 3 0 1.2.7 2 1.8 2.5" />
+        <path d="M8 17.5A5.4 5.4 0 0 0 12.2 19c2.4 0 4.3-1.1 4.3-3.1 0-1.3-.8-2.1-2-2.6" />
+      </svg>
+    );
+  }
+
+  if (name === "italic") {
+    return (
+      <svg {...commonProps}>
+        <path d="M10 5h8" />
+        <path d="M6 19h8" />
+        <path d="m14 5-4 14" />
+      </svg>
+    );
+  }
+
+  if (name === "list") {
+    return (
+      <svg {...commonProps}>
+        <path d="M8 6h13" />
+        <path d="M8 12h13" />
+        <path d="M8 18h13" />
+        <path d="M3 6h.01" />
+        <path d="M3 12h.01" />
+        <path d="M3 18h.01" />
+      </svg>
+    );
+  }
+
+  if (name === "line") {
+    return (
+      <svg {...commonProps}>
+        <path d="M5 12h14" />
+      </svg>
+    );
+  }
+
+  if (name === "close") {
+    return (
+      <svg {...commonProps}>
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    );
+  }
+
+  if (name === "left") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 6h13" />
+        <path d="M4 10h9" />
+        <path d="M4 14h13" />
+        <path d="M4 18h9" />
+      </svg>
+    );
+  }
+
+  if (name === "center") {
+    return (
+      <svg {...commonProps}>
+        <path d="M6 6h12" />
+        <path d="M8 10h8" />
+        <path d="M6 14h12" />
+        <path d="M8 18h8" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <rect width="18" height="16" x="3" y="4" rx="2" />
+      <path d="m21 15-5-5L5 21" />
+      <path d="m14 14-3-3-8 8" />
+      <path d="M14 8h.01" />
+    </svg>
+  );
+}
+
+function RichDescriptionEditor({
+  id,
+  label,
+  value,
+  placeholder,
+  error,
+  required,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder?: string;
+  error?: string;
+  required?: boolean;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
+  const [activePopover, setActivePopover] = useState<"image" | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageAlignment, setImageAlignment] = useState<"left" | "center">("left");
+  const describedBy = error ? `${id}-error` : undefined;
+  const descriptionImageCount = countDescriptionImages(value);
+  const imageLimitReached = descriptionImageCount >= maxDescriptionImages;
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const clone = editor.cloneNode(true) as HTMLDivElement;
+    clone.querySelectorAll("[data-editor-insertion-marker]").forEach((marker) => marker.remove());
+
+    if (clone.innerHTML !== value) {
+      editor.innerHTML = value;
+    }
+  }, [value]);
+
+  const removeInsertionMarker = () => {
+    editorRef.current
+      ?.querySelectorAll("[data-editor-insertion-marker]")
+      .forEach((marker) => marker.remove());
+  };
+
+  const getEditorHtml = () => {
+    const editor = editorRef.current;
+    if (!editor) return "";
+
+    const clone = editor.cloneNode(true) as HTMLDivElement;
+    clone.querySelectorAll("[data-editor-insertion-marker]").forEach((marker) => marker.remove());
+    return clone.innerHTML;
+  };
+
+  const syncEditorValue = () => {
+    onChange(getEditorHtml());
+  };
+
+  const saveEditorSelection = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) {
+      savedSelectionRef.current = range.cloneRange();
+    }
+  };
+
+  const restoreEditorSelection = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    selection.removeAllRanges();
+    if (savedSelectionRef.current && editor.contains(savedSelectionRef.current.commonAncestorContainer)) {
+      selection.addRange(savedSelectionRef.current);
+      return;
+    }
+
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection.addRange(range);
+  };
+
+  const placeInsertionMarker = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    saveEditorSelection();
+    removeInsertionMarker();
+
+    const selection = window.getSelection();
+    const activeRange =
+      selection && selection.rangeCount > 0 && editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+        ? selection.getRangeAt(0).cloneRange()
+        : null;
+    const savedRange =
+      savedSelectionRef.current && editor.contains(savedSelectionRef.current.commonAncestorContainer)
+        ? savedSelectionRef.current.cloneRange()
+        : null;
+    const markerRange = activeRange ?? savedRange ?? document.createRange();
+
+    if (!activeRange && !savedRange) {
+      markerRange.selectNodeContents(editor);
+      markerRange.collapse(false);
+    }
+
+    const marker = document.createElement("span");
+    marker.dataset.editorInsertionMarker = "true";
+    marker.contentEditable = "false";
+    marker.style.display = "none";
+
+    markerRange.deleteContents();
+    markerRange.insertNode(marker);
+    markerRange.setStartAfter(marker);
+    markerRange.collapse(true);
+    savedSelectionRef.current = markerRange.cloneRange();
+  };
+
+  const closeImagePopover = () => {
+    removeInsertionMarker();
+    setActivePopover(null);
+  };
+
+  const runEditorCommand = (command: string, commandValue?: string) => {
+    restoreEditorSelection();
+    document.execCommand(command, false, commandValue);
+    syncEditorValue();
+    saveEditorSelection();
+  };
+
+  const handleEditorPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    if (!text) return;
+
+    restoreEditorSelection();
+    document.execCommand("insertText", false, text);
+    syncEditorValue();
+    saveEditorSelection();
+  };
+
+  const insertImage = () => {
+    const editor = editorRef.current;
+    const trimmedUrl = imageUrl.trim();
+    if (!editor || !trimmedUrl || countDescriptionImages(getEditorHtml()) >= maxDescriptionImages) return;
+
+    const image = document.createElement("img");
+    image.src = trimmedUrl;
+    image.alt = "";
+    image.className = `deal-description-image-${imageAlignment}`;
+
+    const marker = editor.querySelector("[data-editor-insertion-marker]");
+    const insertRange = document.createRange();
+    const selection = window.getSelection();
+
+    if (marker) {
+      insertRange.setStartBefore(marker);
+      marker.replaceWith(image);
+    } else {
+      restoreEditorSelection();
+      const activeRange =
+        selection && selection.rangeCount > 0 && editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+          ? selection.getRangeAt(0)
+          : savedSelectionRef.current;
+      insertRange.selectNodeContents(editor);
+      if (activeRange) {
+        insertRange.setStart(activeRange.startContainer, activeRange.startOffset);
+        insertRange.setEnd(activeRange.endContainer, activeRange.endOffset);
+        insertRange.deleteContents();
+      } else {
+        insertRange.collapse(false);
+      }
+      insertRange.insertNode(image);
+    }
+
+    insertRange.setStartAfter(image);
+    insertRange.collapse(true);
+
+    selection?.removeAllRanges();
+    selection?.addRange(insertRange);
+    savedSelectionRef.current = insertRange.cloneRange();
+    syncEditorValue();
+    setImageUrl("");
+    setActivePopover(null);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label htmlFor={id} className="block text-sm font-semibold text-slate-950">
+        {label}
+        {required ? <span className="ml-1 text-rose-600">*</span> : null}
+      </label>
+      <div className={`post-rich-editor relative rounded-2xl border shadow-sm ${error ? "post-form-field-error" : ""}`}>
+        <div className="post-rich-editor-toolbar flex flex-wrap gap-1 border-b p-2">
+          <button
+            type="button"
+            onClick={() => runEditorCommand("bold")}
+            disabled={disabled}
+            aria-label="Bold"
+            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RichEditorIcon name="bold" />
+          </button>
+          <button
+            type="button"
+            onClick={() => runEditorCommand("strikeThrough")}
+            disabled={disabled}
+            aria-label="Strikethrough"
+            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RichEditorIcon name="strike" />
+          </button>
+          <button
+            type="button"
+            onClick={() => runEditorCommand("italic")}
+            disabled={disabled}
+            aria-label="Italic"
+            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RichEditorIcon name="italic" />
+          </button>
+          <button
+            type="button"
+            onClick={() => runEditorCommand("insertUnorderedList")}
+            disabled={disabled}
+            aria-label="Bullet Point"
+            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RichEditorIcon name="list" />
+          </button>
+          <button
+            type="button"
+            onClick={() => runEditorCommand("insertHorizontalRule")}
+            disabled={disabled}
+            aria-label="Breaker Line"
+            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RichEditorIcon name="line" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              saveEditorSelection();
+            }}
+            onClick={() => {
+              if (activePopover === "image") {
+                closeImagePopover();
+                return;
+              }
+
+              placeInsertionMarker();
+              setActivePopover("image");
+            }}
+            disabled={disabled}
+            aria-label="Image"
+            aria-expanded={activePopover === "image"}
+            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 data-[active=true]:bg-[#dc115e] data-[active=true]:text-white"
+            data-active={activePopover === "image"}
+          >
+            <RichEditorIcon name="image" />
+          </button>
+        </div>
+        {activePopover ? (
+          <div className="post-rich-editor-popover absolute left-3 top-12 z-30 w-[min(320px,calc(100%-1.5rem))] rounded-2xl border p-3 shadow-xl">
+            <div className="flex items-center justify-between gap-4">
+              <p className="inline-flex items-center gap-2 text-base font-bold">
+                <RichEditorIcon name={activePopover} />
+                Insert image
+              </p>
+              <button
+                type="button"
+                onClick={closeImagePopover}
+                aria-label="Close"
+                className="post-rich-editor-button inline-flex h-8 w-8 items-center justify-center rounded-xl"
+              >
+                <RichEditorIcon name="close" />
+              </button>
+            </div>
+
+            {activePopover === "image" ? (
+              <div className="mt-3 space-y-3">
+                <label className="block">
+                  <span className="flex items-center justify-between gap-3 text-sm font-bold">
+                    <span>Image from URL</span>
+                    <span className="text-xs font-semibold text-slate-500">
+                      {descriptionImageCount}/{maxDescriptionImages}
+                    </span>
+                  </span>
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={(event) => setImageUrl(event.target.value)}
+                    placeholder="Image URL"
+                    disabled={imageLimitReached}
+                    autoComplete="off"
+                    className="post-rich-editor-input mt-1.5 block h-10 w-full rounded-xl border px-3 text-sm outline-none"
+                  />
+                </label>
+                {imageLimitReached ? (
+                  <p className="theme-alert theme-alert-error px-3 py-2 text-sm font-semibold">
+                    <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
+                      {"\u26A0"}
+                    </span>
+                    You can insert up to {maxDescriptionImages} images in the description.
+                  </p>
+                ) : null}
+                <div>
+                  <p className="text-sm font-bold">Alignment</p>
+                  <div className="post-rich-editor-align-control mt-1.5 grid grid-cols-2 gap-1 rounded-full border p-1">
+                    {[
+                      { value: "left", label: "Left", icon: "left" },
+                      { value: "center", label: "Center", icon: "center" },
+                    ].map((option) => {
+                      const selected = imageAlignment === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setImageAlignment(option.value as "left" | "center")}
+                          className={`inline-flex h-9 items-center justify-center gap-2 rounded-full text-sm font-bold transition ${
+                            selected ? "post-rich-editor-align-selected" : "post-rich-editor-align-idle"
+                          }`}
+                        >
+                          <RichEditorIcon name={option.icon as "left" | "center"} />
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={insertImage}
+                  disabled={!imageUrl.trim() || imageLimitReached}
+                  className="post-rich-editor-insert-button inline-flex h-10 w-full items-center justify-center rounded-full text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Add image
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div
+          ref={editorRef}
+          id={id}
+          role="textbox"
+          contentEditable={!disabled}
+          data-placeholder={placeholder}
+          onInput={() => {
+            syncEditorValue();
+            saveEditorSelection();
+          }}
+          onBlur={() => {
+            saveEditorSelection();
+            syncEditorValue();
+          }}
+          onKeyUp={saveEditorSelection}
+          onMouseUp={saveEditorSelection}
+          onFocus={saveEditorSelection}
+          onPaste={handleEditorPaste}
+          className="post-rich-editor-surface min-h-40 overflow-auto px-4 py-3 text-sm leading-6 outline-none"
+          aria-invalid={Boolean(error)}
+          aria-describedby={describedBy}
+          aria-required={required}
+        />
+      </div>
+      <div className="space-y-1 text-sm leading-5">
+        {error ? (
+          <p id={`${id}-error`} className="font-semibold text-rose-700">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -295,8 +906,8 @@ function getSubmissionOutcome(message: string) {
   if (normalized.includes("published automatically")) {
     return {
       label: "Published automatically",
-      title: "Your deal is live",
-      description: "It passed the marketplace checks and is visible to shoppers now.",
+      title: "Deal submitted successfully!",
+      description: "",
       tone: "emerald",
     };
   }
@@ -305,7 +916,7 @@ function getSubmissionOutcome(message: string) {
     return {
       label: "Manual review",
       title: "Submitted with a duplicate warning",
-      description: "Admins will compare it with the existing deal before deciding whether to publish it.",
+      description: "",
       tone: "amber",
     };
   }
@@ -313,41 +924,30 @@ function getSubmissionOutcome(message: string) {
   return {
     label: "Waiting for moderation",
     title: "Your deal is in the review queue",
-    description: "The deal was saved successfully and will appear once it is approved.",
+    description: "",
     tone: "slate",
   };
 }
 
 function applyDetectedType(
   values: DealFormState,
-  options: { categoryTouched: boolean; subCategoryTouched: boolean },
+  options: { categoryTouched: boolean },
 ) {
   const detected = detectDealCategory([values.title, values.description, values.url]);
-  if (!detected || (options.categoryTouched && options.subCategoryTouched)) {
-    return { values, detectedLabel: "" };
+  if (!detected || options.categoryTouched) {
+    return values;
   }
 
-  const nextValues = {
-    ...values,
-    category: options.categoryTouched ? values.category : detected.category,
-    subCategory: options.subCategoryTouched ? values.subCategory : detected.subCategory,
-  };
-
+  const categoryChanged = values.category !== detected.category;
   return {
-    values: nextValues,
-    detectedLabel: detected.subCategory
-      ? `${detected.category} / ${detected.subCategory}`
-      : detected.category,
+    ...values,
+    category: detected.category,
+    subCategory: categoryChanged ? "" : values.subCategory,
   };
 }
 
 function isValidUrl(value: string) {
-  try {
-    const parsed = new URL(value.trim());
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return isProcessableDealUrl(value);
 }
 
 function getUrlHost(value: string) {
@@ -372,8 +972,11 @@ function validateForm(
 
   if (!values.url.trim()) {
     errors.url = "Paste the deal URL.";
-  } else if (!isValidUrl(values.url.trim())) {
-    errors.url = "Use a full http:// or https:// URL.";
+  } else {
+    const urlValidation = validateDealUrl(values.url);
+    if (!urlValidation.ok) {
+      errors.url = urlValidation.error;
+    }
   }
 
   if (!values.price.trim()) {
@@ -392,13 +995,42 @@ function validateForm(
     }
   }
 
-  if (!values.category.trim()) {
-    errors.category = "Choose a category.";
+  if (values.shippingMode === "paid") {
+    if (!values.shippingCost.trim()) {
+      errors.shippingCost = "Add the shipping cost.";
+    } else if (Number.isNaN(Number(values.shippingCost)) || Number(values.shippingCost) < 0) {
+      errors.shippingCost = "Shipping cost must be 0 or more.";
+    }
   }
 
-  if (!values.description.trim()) {
+  if (!values.category.trim()) {
+    errors.category = "Choose a category.";
+  } else {
+    const category = getCategoryByName(values.category);
+    if (category && category.subcategories.length > 0 && !values.subCategory.trim()) {
+      errors.subCategory = "Choose a sub category.";
+    }
+  }
+
+  if (values.expirationMode === "set") {
+    if (!values.expiresAt.trim()) {
+      errors.expiresAt = "Choose when this deal expires.";
+    } else {
+      const expiresAt = new Date(values.expiresAt);
+
+      if (Number.isNaN(expiresAt.getTime())) {
+        errors.expiresAt = "Choose a valid expiry date and time.";
+      } else if (expiresAt.getTime() <= Date.now()) {
+        errors.expiresAt = "Expiry should be in the future.";
+      }
+    }
+  }
+
+  const descriptionText = getDescriptionText(values.description);
+
+  if (!descriptionText) {
     errors.description = "Add a short description.";
-  } else if (values.description.trim().length < 20) {
+  } else if (descriptionText.length < 20) {
     errors.description = "Add a little more detail.";
   }
 
@@ -410,11 +1042,12 @@ function validateForm(
 }
 
 function validateStep(values: DealFormState, step: number) {
-  const allErrors = validateForm(values);
+  const allErrors = validateForm(values, { requireManualImage: step >= 1 });
   const fieldsByStep: Array<Array<keyof DealFormState>> = [
     ["url"],
-    ["title", "description"],
-    ["price", "originalPrice", "category"],
+    ["title", "imageName"],
+    ["description"],
+    ["price", "originalPrice", "shippingCost", "category", "subCategory", "expiresAt"],
     [],
   ];
   const stepFields = fieldsByStep[step] ?? [];
@@ -426,8 +1059,9 @@ function validateStep(values: DealFormState, step: number) {
 
 function getFirstErrorStep(errors: FormErrors) {
   if (errors.url) return 0;
-  if (errors.title || errors.description) return 1;
-  if (errors.price || errors.originalPrice || errors.category) return 2;
+  if (errors.title || errors.imageName) return 1;
+  if (errors.description) return 2;
+  if (errors.price || errors.originalPrice || errors.shippingCost || errors.category || errors.subCategory || errors.expiresAt) return 3;
   return finalStep;
 }
 
@@ -458,6 +1092,7 @@ async function fetchScrapeData(url: string) {
 }
 
 export default function PostClient() {
+  const router = useRouter();
   const [actionState, formAction, isPending] = useActionState(
     createDealAction,
     initialDealActionState,
@@ -466,19 +1101,20 @@ export default function PostClient() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetching, setIsFetching] = useState(false);
-  const [fetchError, setFetchError] = useState("");
-  const [imageLoadError, setImageLoadError] = useState("");
   const [lastFetchedUrl, setLastFetchedUrl] = useState("");
-  const [scrapeData, setScrapeData] = useState<ScrapeData | null>(null);
   const [scrapeSummary, setScrapeSummary] = useState<ScrapeSummary>(initialScrapeSummary);
   const [categoryTouched, setCategoryTouched] = useState(false);
-  const [subCategoryTouched, setSubCategoryTouched] = useState(false);
-  const [detectedType, setDetectedType] = useState("");
   const [duplicateCheck, setDuplicateCheck] = useState<DuplicateDealCheckResult | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [showExpirationPicker, setShowExpirationPicker] = useState(false);
+  const [draftExpiresAt, setDraftExpiresAt] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [showSuccessPanel, setShowSuccessPanel] = useState(false);
+  const [isDiscardPromptOpen, setIsDiscardPromptOpen] = useState(false);
+  const [activeReviewPhotoIndex, setActiveReviewPhotoIndex] = useState(0);
   const messageRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
+  const expirationPickerRef = useRef<HTMLDivElement>(null);
   const lastAutoAdvancedUrl = useRef("");
   const serverErrors = actionState.errors ?? {};
   const combinedErrors = { ...serverErrors, ...errors };
@@ -489,6 +1125,16 @@ export default function PostClient() {
       label: subcategory,
     })) ?? [];
   const urlHost = getUrlHost(form.url);
+  const productImageUrl = form.imageUrl || form.uploadedImageUrl;
+  const submittedGalleryUrls = [productImageUrl, ...form.optionalImageUrls].filter(Boolean).slice(0, maxGalleryImages);
+  const activeReviewPhotoUrl =
+    submittedGalleryUrls[Math.min(activeReviewPhotoIndex, Math.max(0, submittedGalleryUrls.length - 1))] ?? productImageUrl;
+  const galleryImageCount = (productImageUrl ? 1 : 0) + form.optionalImageUrls.length;
+  const canAddGalleryImage = galleryImageCount < maxGalleryImages;
+  const visibleGallerySlots = Math.min(maxGalleryImages, Math.max(6, galleryImageCount + 1));
+  const renderedGalleryBaseSlots = productImageUrl ? galleryImageCount : 1;
+  const remainingVisibleGallerySlots = Math.max(0, visibleGallerySlots - renderedGalleryBaseSlots);
+  const showReviewPhotoControls = submittedGalleryUrls.length > 1;
 
   const scrollToTop = () => {
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -496,27 +1142,19 @@ export default function PostClient() {
 
   const handleChange = (field: keyof DealFormState, value: string) => {
     const nextCategoryTouched = categoryTouched || field === "category";
-    const nextSubCategoryTouched = subCategoryTouched || field === "subCategory";
 
     if (field === "category") {
       setCategoryTouched(true);
-      setDetectedType("");
-    }
-
-    if (field === "subCategory") {
-      setSubCategoryTouched(true);
-      setDetectedType("");
     }
 
     if (field === "url") {
       setScrapeSummary(initialScrapeSummary);
-      setScrapeData(null);
       setDuplicateCheck(null);
-      setImageLoadError("");
     }
 
-    if (field === "imageUrl" || field === "imageName" || field === "uploadedImageUrl") {
-      setImageLoadError("");
+    if (field === "expirationMode" && value === "none") {
+      setShowExpirationPicker(false);
+      setDraftExpiresAt("");
     }
 
     if (field === "title" || field === "store") {
@@ -528,6 +1166,8 @@ export default function PostClient() {
         ...current,
         [field]: value,
         ...(field === "category" ? { subCategory: "" } : {}),
+        ...(field === "expirationMode" && value === "none" ? { expiresAt: "" } : {}),
+        ...(field === "shippingMode" && value === "free" ? { shippingCost: "" } : {}),
       };
 
       if (field === "category" || field === "subCategory") {
@@ -536,38 +1176,11 @@ export default function PostClient() {
 
       const detected = applyDetectedType(nextValues, {
         categoryTouched: nextCategoryTouched,
-        subCategoryTouched: nextSubCategoryTouched,
       });
 
-      setDetectedType(detected.detectedLabel);
-      return detected.values;
+      return detected;
     });
     setErrors((current) => ({ ...current, [field]: undefined }));
-    setFetchError("");
-  };
-
-  const applyScrapedField = (field: "title" | "description" | "imageUrl") => {
-    if (!scrapeData) return;
-
-    const scrapedValue =
-      field === "imageUrl"
-        ? scrapeData.image
-        : field === "title"
-        ? scrapeData.title
-        : scrapeData.description;
-
-    if (!scrapedValue) return;
-
-    setForm((current) => {
-      const nextValues = { ...current, [field]: scrapedValue };
-      const detected = applyDetectedType(nextValues, { categoryTouched, subCategoryTouched });
-      setDetectedType(detected.detectedLabel);
-      return detected.values;
-    });
-    setErrors((current) => ({ ...current, [field]: undefined }));
-    if (field === "imageUrl") {
-      setImageLoadError("");
-    }
   };
 
   const handleScrapedImageError = () => {
@@ -577,11 +1190,27 @@ export default function PostClient() {
       applied: current.applied.filter((field) => field !== "image"),
       missing: current.missing.includes("image") ? current.missing : [...current.missing, "image"],
     }));
-    setImageLoadError("Autofilled image could not be loaded. Please add an image manually before submitting.");
   };
 
+  const clearPostImages = useCallback(() => {
+    setForm((current) => ({
+      ...current,
+      imageName: "",
+      imageUrl: "",
+      uploadedImageUrl: "",
+      optionalImageNames: [],
+      optionalImageUrls: [],
+      imageGalleryUrls: [],
+    }));
+    setActiveReviewPhotoIndex(0);
+    setScrapeSummary((current) => ({
+      ...current,
+      applied: current.applied.filter((field) => field !== "image"),
+      missing: current.missing.filter((field) => field !== "image"),
+    }));
+  }, []);
+
   const runFetchDetails = useCallback(async (url: string) => {
-    setFetchError("");
     setIsFetching(true);
     setScrapeSummary({ status: "fetching", applied: [], missing: [] });
 
@@ -590,11 +1219,8 @@ export default function PostClient() {
       const missing = [
         !data.image ? "image" : "",
       ].filter(Boolean);
-      let detectedLabel = "";
       let appliedFields: string[] = [];
 
-      setScrapeData(data);
-      setImageLoadError("");
       setForm((current) => {
         const nextTitle = current.title;
         const nextDescription = current.description;
@@ -603,7 +1229,7 @@ export default function PostClient() {
           !current.imageUrl && data.image ? "image" : "",
         ].filter(Boolean);
 
-        const detected = applyDetectedType(
+        const detectedValues = applyDetectedType(
           {
             ...current,
             title: nextTitle,
@@ -611,14 +1237,12 @@ export default function PostClient() {
             url,
             imageUrl: nextImageUrl,
           },
-          { categoryTouched, subCategoryTouched },
+          { categoryTouched },
         );
 
-        detectedLabel = detected.detectedLabel;
-        return { ...detected.values, url: current.url };
+        return { ...detectedValues, url: current.url };
       });
 
-      setDetectedType(detectedLabel);
       setErrors((current) => ({ ...current, title: undefined, description: undefined }));
       setLastFetchedUrl(url);
       setScrapeSummary({
@@ -626,13 +1250,30 @@ export default function PostClient() {
         applied: appliedFields,
         missing,
       });
-    } catch (error) {
-      setFetchError(error instanceof Error ? error.message : "Failed to fetch product details");
+    } catch {
       setScrapeSummary({ status: "failed", applied: [], missing: [] });
     } finally {
+      if (form.url.trim() === url && lastAutoAdvancedUrl.current !== url) {
+        const duplicateResult = await checkDuplicateDealAction({
+          title: form.title.trim(),
+          url,
+          store: form.store.trim() || "Online",
+        });
+
+        if (duplicateResult.match) {
+          setDuplicateCheck(duplicateResult);
+          setIsFetching(false);
+          return;
+        }
+
+        lastAutoAdvancedUrl.current = url;
+        setErrors((current) => ({ ...current, url: undefined }));
+        setCurrentStep((step) => (step === 0 ? 1 : step));
+        scrollToTop();
+      }
       setIsFetching(false);
     }
-  }, [categoryTouched, subCategoryTouched]);
+  }, [categoryTouched, form.store, form.title, form.url]);
 
   useEffect(() => {
     const url = form.url.trim();
@@ -648,28 +1289,24 @@ export default function PostClient() {
   }, [form.url, lastFetchedUrl, runFetchDetails]);
 
   useEffect(() => {
-    const url = form.url.trim();
+    const handlePageHide = () => {
+      clearPostImages();
+    };
 
-    if (currentStep !== 0 || !isValidUrl(url) || url === lastAutoAdvancedUrl.current) {
-      return;
-    }
+    window.addEventListener("pagehide", handlePageHide);
 
-    const timer = window.setTimeout(() => {
-      lastAutoAdvancedUrl.current = url;
-      setErrors((current) => ({ ...current, url: undefined }));
-      setCurrentStep(1);
-      scrollToTop();
-    }, 500);
-
-    return () => window.clearTimeout(timer);
-  }, [currentStep, form.url]);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      clearPostImages();
+    };
+  }, [clearPostImages]);
 
   useEffect(() => {
     const title = form.title.trim();
     const url = form.url.trim();
-    const store = form.store.trim();
+    const store = form.store.trim() || "Online";
 
-    if (title.length < 8 || !isValidUrl(url) || !store) {
+    if (!isValidUrl(url)) {
       return;
     }
 
@@ -726,20 +1363,55 @@ export default function PostClient() {
       setForm(initialFormState);
       setErrors({});
       setCurrentStep(0);
-      setFetchError("");
       setLastFetchedUrl("");
-      setScrapeData(null);
       setScrapeSummary(initialScrapeSummary);
-      setImageLoadError("");
-      setDetectedType("");
       setDuplicateCheck(null);
       lastAutoAdvancedUrl.current = "";
       setCategoryTouched(false);
-      setSubCategoryTouched(false);
     }, 0);
 
     return () => window.clearTimeout(timer);
   }, [actionState.ok, actionState.dealId]);
+
+  useEffect(() => {
+    if (activeReviewPhotoIndex < submittedGalleryUrls.length) {
+      return;
+    }
+
+    setActiveReviewPhotoIndex(Math.max(0, submittedGalleryUrls.length - 1));
+  }, [activeReviewPhotoIndex, submittedGalleryUrls.length]);
+
+  useEffect(() => {
+    if (!showExpirationPicker) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || expirationPickerRef.current?.contains(target)) {
+        return;
+      }
+
+      setShowExpirationPicker(false);
+      setDraftExpiresAt("");
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [showExpirationPicker]);
+
+  useEffect(() => {
+    if (!isDiscardPromptOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsDiscardPromptOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isDiscardPromptOpen]);
 
   const handlePostAnother = () => {
     setShowSuccessPanel(false);
@@ -756,6 +1428,20 @@ export default function PostClient() {
       return;
     }
 
+    if (currentStep === 0 && isCheckingDuplicate) {
+      scrollToTop();
+      return;
+    }
+
+    if (currentStep === 0 && duplicateCheck?.match) {
+      setErrors((current) => ({
+        ...current,
+        url: "This deal already exists.",
+      }));
+      scrollToTop();
+      return;
+    }
+
     setErrors({});
     window.setTimeout(() => {
       setCurrentStep((step) => Math.min(step + 1, finalStep));
@@ -766,6 +1452,50 @@ export default function PostClient() {
   const handleBack = () => {
     setCurrentStep((step) => Math.max(step - 1, 0));
     scrollToTop();
+  };
+
+  const handleDiscard = () => {
+    setIsDiscardPromptOpen(true);
+  };
+
+  const confirmDiscard = () => {
+    setIsDiscardPromptOpen(false);
+    clearPostImages();
+    router.push("/");
+  };
+
+  const openExpirationPicker = () => {
+    const selectedDate = parseDateTimeInputValue(form.expiresAt);
+
+    setDraftExpiresAt(form.expiresAt);
+    setCalendarMonth(selectedDate ?? new Date());
+    setShowExpirationPicker((current) => !current);
+  };
+
+  const updateExpirationDate = (day: number) => {
+    const current = parseDateTimeInputValue(draftExpiresAt);
+    const next = new Date(
+      calendarMonth.getFullYear(),
+      calendarMonth.getMonth(),
+      day,
+      current?.getHours() ?? 9,
+      current?.getMinutes() ?? 0,
+    );
+
+    setDraftExpiresAt(formatDateTimeInputValue(next));
+  };
+
+  const updateExpirationTime = (hour: number, minute: number) => {
+    const current = parseDateTimeInputValue(draftExpiresAt) ?? new Date();
+    const next = new Date(current);
+
+    next.setHours(hour, minute, 0, 0);
+    setDraftExpiresAt(formatDateTimeInputValue(next));
+  };
+
+  const saveExpirationDraft = () => {
+    handleChange("expiresAt", draftExpiresAt);
+    setShowExpirationPicker(false);
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -824,7 +1554,6 @@ export default function PostClient() {
         uploadedImageUrl: compressedImage,
         imageGalleryUrls: [compressedImage, ...current.optionalImageUrls].slice(0, maxGalleryImages),
       }));
-      setImageLoadError("");
     } catch (error) {
       setErrors((current) => ({
         ...current,
@@ -897,30 +1626,26 @@ export default function PostClient() {
   const discountPercent = originalPrice > currentPrice ? Math.round((discountAmount / originalPrice) * 100) : 0;
   const discountLabel =
     originalPrice > currentPrice && discountAmount > 0 ? `${discountPercent}% off` : "";
-  const canSubmit = !isPending && !isFetching;
+  const hasDuplicateMatch = Boolean(duplicateCheck?.match);
+  const canSubmit = !isPending && !isFetching && !hasDuplicateMatch;
   const successOutcome = getSubmissionOutcome(actionState.message);
-  const canShowDuplicateCheck =
-    form.title.trim().length >= 8 && isValidUrl(form.url) && Boolean(form.store.trim());
-  const unavailableScrapedFields = [
-    scrapeData?.title && form.title !== scrapeData.title ? "title" : "",
-    scrapeData?.description && form.description !== scrapeData.description ? "description" : "",
-    scrapeData?.image && form.imageUrl !== scrapeData.image ? "image" : "",
-  ].filter(Boolean);
-  const productImageUrl = form.imageUrl || form.uploadedImageUrl;
-  const submittedImageUrl = form.uploadedImageUrl;
-  const shouldShowProductUpload = !form.imageUrl;
-  const submittedGalleryUrls = [productImageUrl, ...form.optionalImageUrls].filter(Boolean).slice(0, maxGalleryImages);
-  const scrapeStatusLabel =
-    scrapeSummary.status === "fetching"
-      ? "Checking link..."
-      : scrapeSummary.status === "failed"
-      ? "Could not autofill."
-      : scrapeSummary.status === "partial"
-      ? "Some details were missing."
+  const canShowDuplicateCheck = isValidUrl(form.url);
+  const activeExpirationValue = showExpirationPicker ? draftExpiresAt : form.expiresAt;
+  const selectedExpirationDate = parseDateTimeInputValue(activeExpirationValue);
+  const calendarDays = getCalendarDays(calendarMonth);
+  const calendarMonthLabel = new Intl.DateTimeFormat("en-MY", {
+    month: "long",
+    year: "numeric",
+  }).format(calendarMonth);
+  const selectedHour = selectedExpirationDate?.getHours() ?? 9;
+  const selectedMinute = selectedExpirationDate?.getMinutes() ?? 0;
+  const linkCheckingLabel =
+    scrapeSummary.status === "fetching" || (currentStep === 0 && isCheckingDuplicate)
+      ? "Checking..."
       : "";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6 lg:px-8">
+    <main className="post-page min-h-screen px-4 py-10 sm:px-6 lg:px-8">
       <div ref={topRef} className="mx-auto max-w-5xl">
         <FormContainer
           title="Share your next great deal"
@@ -930,64 +1655,40 @@ export default function PostClient() {
             {actionState.ok && showSuccessPanel ? (
               <section
                 ref={messageRef}
-                className={`overflow-hidden rounded-3xl border bg-white shadow-sm ${
-                  successOutcome.tone === "emerald"
-                    ? "border-emerald-200"
-                    : successOutcome.tone === "amber"
-                    ? "border-amber-200"
-                    : "border-slate-200"
-                }`}
+                className="post-success-overlay fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
                 aria-live="polite"
               >
                 <div
-                  className={`border-b px-5 py-5 sm:px-6 ${
-                    successOutcome.tone === "emerald"
-                      ? "border-emerald-200 bg-emerald-50"
-                      : successOutcome.tone === "amber"
-                      ? "border-amber-200 bg-amber-50"
-                      : "border-slate-200 bg-slate-50"
+                  className={`post-success-panel w-full max-w-xl ${
+                    successOutcome.tone === "amber" ? "post-success-panel-review" : ""
                   }`}
                 >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="px-6 py-6 sm:px-7">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p
-                        className={`text-xs font-semibold uppercase tracking-[0.22em] ${
-                          successOutcome.tone === "emerald"
-                            ? "text-emerald-800"
-                            : successOutcome.tone === "amber"
-                            ? "text-amber-800"
-                            : "text-slate-500"
-                        }`}
-                      >
+                      <p className="post-success-kicker text-xs font-bold uppercase tracking-[0.24em]">
                         {successOutcome.label}
                       </p>
-                      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                      <h2 className="post-success-title mt-2 text-2xl font-bold tracking-tight">
                         {successOutcome.title}
                       </h2>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
-                        {successOutcome.description}
-                      </p>
+                      {successOutcome.description ? (
+                        <p className="post-success-copy mt-2 max-w-2xl text-sm leading-6">
+                          {successOutcome.description}
+                        </p>
+                      ) : null}
                     </div>
-                    <span
-                      className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-                        successOutcome.tone === "emerald"
-                          ? "bg-emerald-600 text-white"
-                          : successOutcome.tone === "amber"
-                          ? "bg-amber-500 text-white"
-                          : "bg-slate-950 text-white"
-                      }`}
-                    >
+                    <span className="post-success-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
                       <CheckIcon />
                     </span>
                   </div>
                 </div>
-                <div className="px-5 py-5 sm:px-6">
-                  <p className="text-sm font-medium leading-6 text-slate-700">{actionState.message}</p>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                <div className="post-success-actions px-6 pb-6 pt-4 sm:px-7">
+                  <div className="grid gap-3.5 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                     {actionState.dealId ? (
                       <Link
                         href={`/deal/${actionState.dealId}`}
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                        className="post-success-primary-action inline-flex h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
                       >
                         View deal
                         <ArrowRightIcon />
@@ -996,32 +1697,38 @@ export default function PostClient() {
                     <button
                       type="button"
                       onClick={handlePostAnother}
-                      className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                      className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
                     >
                       Post another deal
                     </button>
                     <Link
                       href="/"
-                      className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                      className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
                     >
                       Go home
                     </Link>
                   </div>
                 </div>
+                </div>
               </section>
             ) : actionState.message && actionState.message !== initialDealActionState.message && !actionState.ok ? (
               <div
                 ref={messageRef}
-                className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900 shadow-sm"
+                className="theme-alert theme-alert-error px-5 py-4 text-sm"
                 aria-live="polite"
               >
-                <p className="font-semibold">{actionState.errors ? "Fix these fields" : "Submission failed"}</p>
+                <p className="font-semibold">
+                  <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
+                    {"\u26A0"}
+                  </span>
+                  {actionState.errors ? "Fix these fields" : "Submission failed"}
+                </p>
                 <p className="mt-1">{actionState.message}</p>
               </div>
             ) : null}
 
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-2">
-              <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="post-stepper">
+              <ol className="grid grid-cols-2 justify-items-center gap-2 sm:grid-cols-5">
                 {steps.map((step, index) => {
                   const isCurrent = index === currentStep;
                   const isComplete = index < currentStep;
@@ -1029,31 +1736,28 @@ export default function PostClient() {
                   return (
                     <li key={step}>
                       <div
-                        className={`flex h-full items-start gap-3 rounded-2xl border px-3 py-3 transition ${
+                        className={`flex h-full w-full max-w-[11.5rem] items-center justify-center gap-3 rounded-full border px-4 py-3 transition ${
                           isCurrent
-                            ? "border-slate-900 bg-white text-slate-950 shadow-sm ring-1 ring-slate-900"
+                            ? "post-step-current"
                             : isComplete
-                            ? "border-emerald-200 bg-white text-slate-700"
+                            ? "post-step-complete"
                             : "border-transparent bg-transparent text-slate-500"
                         }`}
                         aria-current={isCurrent ? "step" : undefined}
                       >
                         <span
-                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
                             isCurrent
-                              ? "bg-slate-950 text-white"
+                              ? "bg-[#dc115e] text-white"
                               : isComplete
-                              ? "bg-emerald-600 text-white"
-                              : "border border-slate-300 bg-white text-slate-500"
+                              ? "post-step-complete-icon"
+                              : "post-step-idle-icon"
                           }`}
                         >
-                          {isComplete ? <CheckIcon /> : index + 1}
+                          {isComplete ? <CheckIcon /> : <StepIcon step={index} />}
                         </span>
                         <span className="min-w-0">
-                          <span className="block text-sm font-semibold">{step}</span>
-                          <span className="mt-0.5 hidden text-xs leading-5 text-slate-500 sm:block">
-                            {stepDescriptions[index]}
-                          </span>
+                          <span className="block text-[0.95rem] font-semibold leading-none">{step}</span>
                         </span>
                       </div>
                     </li>
@@ -1078,25 +1782,32 @@ export default function PostClient() {
                   onChange={(value) => handleChange("url", value)}
                 />
 
-                {scrapeStatusLabel ? (
+                {linkCheckingLabel ? (
                   <div
-                    className={`rounded-2xl border px-4 py-3 text-sm ${
-                      scrapeSummary.status === "failed"
-                        ? "border-rose-200 bg-rose-50 text-rose-900"
-                        : scrapeSummary.status === "partial"
-                        ? "border-amber-200 bg-amber-50 text-amber-900"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-900"
-                    }`}
+                    className="post-loading-status py-3 text-center text-sm font-medium"
                     aria-live="polite"
                   >
-                    <p className="font-semibold">{scrapeStatusLabel}</p>
-                    {scrapeSummary.missing.length ? (
-                      <p className="mt-1">Missing: {scrapeSummary.missing.join(", ")}</p>
-                    ) : null}
+                    <div className="inline-flex items-center justify-center gap-2">
+                      <span className="post-loading-mini-spinner" aria-hidden="true" />
+                      {linkCheckingLabel}
+                    </div>
+                    <div className="post-loading-track mx-auto mt-3">
+                      <div className="post-loading-bar" />
+                    </div>
                   </div>
                 ) : null}
 
-                {fetchError ? <p className="text-sm text-rose-600">{fetchError}</p> : null}
+                {canShowDuplicateCheck && duplicateCheck?.match ? (
+                  <div className="post-inline-warning px-3 py-3 text-sm" aria-live="polite">
+                    <p className="font-semibold">
+                      <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
+                        {"\u26A0"}
+                      </span>
+                      Possible duplicate
+                    </p>
+                    <p className="mt-1">{getDuplicateReasonLabel(duplicateCheck.match.reason)}</p>
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
@@ -1116,96 +1827,169 @@ export default function PostClient() {
                   />
                 </div>
 
-                <div className="sm:col-span-2">
-                  <TextareaField
-                    id="description"
-                    name="description"
-                    label="Description"
-                    value={form.description}
-                    placeholder="Voucher code, shipping, expiry, or product notes."
-                    required
-                    rows={5}
-                    error={combinedErrors.description}
-                    disabled={isPending}
-                    onChange={(value) => handleChange("description", value)}
-                  />
+                <div className="post-photo-section sm:col-span-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Product photo</p>
+                      <p className="mt-1 text-xs text-slate-500">Used as the deal thumbnail.</p>
+                    </div>
+                    <span className="post-review-pill rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]">
+                      Required
+                    </span>
+                  </div>
+
+                  <div className="post-gallery-shell mt-5">
+                    <div className="post-gallery-grid">
+                      {productImageUrl ? (
+                        <div className="post-gallery-slot post-gallery-slot-primary relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleChange("imageUrl", "");
+                              handleChange("uploadedImageUrl", "");
+                              handleChange("imageName", "");
+                            }}
+                            disabled={isPending}
+                            aria-label="Remove product image"
+                            className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                          >
+                            <RemoveIcon />
+                          </button>
+                          <UserImage
+                            src={productImageUrl}
+                            alt="Product photo preview"
+                            className="h-full w-full object-contain"
+                            onError={form.imageUrl ? handleScrapedImageError : undefined}
+                          />
+                        </div>
+                      ) : (
+                        <label
+                          className={`post-gallery-slot post-gallery-upload post-gallery-slot-primary ${
+                            combinedErrors.imageName ? "post-upload-zone-error" : ""
+                          }`}
+                        >
+                          <span className="post-gallery-plus" aria-hidden="true">
+                            +
+                          </span>
+                          <span className="sr-only">Upload product photo</span>
+                          <input
+                            name="productImageFileDetails"
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            aria-invalid={Boolean(combinedErrors.imageName)}
+                            disabled={isPending}
+                            onChange={handleProductImageChange}
+                          />
+                        </label>
+                      )}
+
+                      {form.optionalImageUrls.map((imageUrl, index) => (
+                        <div key={`${imageUrl.slice(0, 32)}-${index}`} className="post-gallery-slot relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((current) => {
+                                const optionalImageUrls = current.optionalImageUrls.filter((_, photoIndex) => photoIndex !== index);
+                                const optionalImageNames = current.optionalImageNames.filter((_, photoIndex) => photoIndex !== index);
+
+                                return {
+                                  ...current,
+                                  optionalImageUrls,
+                                  optionalImageNames,
+                                  imageGalleryUrls: [current.uploadedImageUrl, ...optionalImageUrls].filter(Boolean).slice(0, maxGalleryImages),
+                                };
+                              });
+                            }}
+                            disabled={isPending}
+                            aria-label={`Remove product photo ${index + 2}`}
+                            className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                          >
+                            <RemoveIcon />
+                          </button>
+                          <UserImage
+                            src={imageUrl}
+                            alt={`Product photo ${index + 2}`}
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                      ))}
+
+                      {Array.from({ length: remainingVisibleGallerySlots }).map((_, index) => {
+                        const isFirstEmptySlot = index === 0;
+
+                        if (!productImageUrl || !canAddGalleryImage || !isFirstEmptySlot) {
+                          return (
+                            <div
+                              key={`empty-photo-slot-${index}`}
+                              className="post-gallery-slot post-gallery-empty"
+                              aria-hidden="true"
+                            />
+                          );
+                        }
+
+                        return (
+                          <label
+                            key={`add-photo-slot-${index}`}
+                            className={`post-gallery-slot post-gallery-upload ${
+                              combinedErrors.imageName ? "post-upload-zone-error" : ""
+                            }`}
+                          >
+                            <span className="post-gallery-plus" aria-hidden="true">
+                              +
+                            </span>
+                            <span className="sr-only">
+                              {productImageUrl ? "Add product photo" : "Upload product photo"}
+                            </span>
+                            <input
+                              name={productImageUrl ? "optionalImageFileDetails" : "productImageFileDetails"}
+                              type="file"
+                              accept="image/*"
+                              className="sr-only"
+                              aria-invalid={Boolean(combinedErrors.imageName)}
+                              disabled={isPending}
+                              onChange={productImageUrl ? handleOptionalImageChange : handleProductImageChange}
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-xs font-medium text-slate-500">
+                    Upload up to {maxGalleryImages} photos. The first photo is used as the thumbnail.
+                  </p>
+
+                  {combinedErrors.imageName ? (
+                    <p className="mt-2 text-sm font-medium text-rose-700">{combinedErrors.imageName}</p>
+                  ) : null}
                 </div>
 
-                {unavailableScrapedFields.length ? (
-                  <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-                    <p className="font-semibold text-slate-900">Autofill options</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {scrapeData?.title && form.title !== scrapeData.title ? (
-                        <button
-                          type="button"
-                          onClick={() => applyScrapedField("title")}
-                          disabled={isPending}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                        >
-                          Title
-                        </button>
-                      ) : null}
-                      {scrapeData?.description && form.description !== scrapeData.description ? (
-                        <button
-                          type="button"
-                          onClick={() => applyScrapedField("description")}
-                          disabled={isPending}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                        >
-                          Description
-                        </button>
-                      ) : null}
-                      {scrapeData?.image && form.imageUrl !== scrapeData.image ? (
-                        <button
-                          type="button"
-                          onClick={() => applyScrapedField("imageUrl")}
-                          disabled={isPending}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                        >
-                          Image
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-
-                {imageLoadError ? (
-                  <div className="sm:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    {imageLoadError}
-                  </div>
-                ) : null}
-
-                {form.imageUrl ? (
-                  <div className="sm:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-900">Image preview</p>
-                      <button
-                        type="button"
-                        onClick={() => handleChange("imageUrl", "")}
-                        disabled={isPending}
-                        className="text-sm font-semibold text-slate-500 hover:text-slate-900"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <UserImage
-                      src={form.imageUrl}
-                      alt="Fetched product preview"
-                      className="mt-4 h-56 w-full rounded-2xl object-contain"
-                      onError={handleScrapedImageError}
-                    />
-                  </div>
-                ) : null}
               </section>
             ) : null}
 
             {currentStep === 2 ? (
+              <section className="grid gap-6">
+                <RichDescriptionEditor
+                  id="description"
+                  label="Description"
+                  value={form.description}
+                  placeholder="Voucher code, shipping, expiry, or product notes."
+                  required
+                  error={combinedErrors.description}
+                  disabled={isPending}
+                  onChange={(value) => handleChange("description", value)}
+                />
+              </section>
+            ) : null}
+
+            {currentStep === 3 ? (
               <section className="grid gap-6 sm:grid-cols-2">
                 <InputField
                   id="price"
                   name="price"
                   label="Deal Price"
-                  type="number"
+                  type="text"
                   value={form.price}
                   placeholder="RM"
                   required
@@ -1219,7 +2003,7 @@ export default function PostClient() {
                   id="original-price"
                   name="originalPrice"
                   label="Original Price"
-                  type="number"
+                  type="text"
                   value={form.originalPrice}
                   placeholder="RM"
                   inputMode="decimal"
@@ -1236,9 +2020,52 @@ export default function PostClient() {
                 />
 
                 <div className="space-y-3">
+                  <label className="block text-sm font-semibold text-slate-900">Shipping</label>
+                  <div className="post-segmented-control grid grid-cols-2 gap-2 rounded-2xl border p-1">
+                    {[
+                      { value: "free", label: "Free" },
+                      { value: "paid", label: "Set cost" },
+                    ].map((option) => {
+                      const selected = form.shippingMode === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleChange("shippingMode", option.value)}
+                          disabled={isPending}
+                          className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                            selected
+                              ? "post-segmented-control-selected shadow-sm"
+                              : "post-segmented-control-idle"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {form.shippingMode === "paid" ? (
+                  <InputField
+                    id="shipping-cost"
+                    name="shippingCost"
+                    label="Shipping Cost"
+                    type="text"
+                    value={form.shippingCost}
+                    placeholder="RM"
+                    inputMode="decimal"
+                    error={combinedErrors.shippingCost}
+                    disabled={isPending}
+                    onChange={(value) => handleChange("shippingCost", value)}
+                  />
+                ) : null}
+
+                <div className="space-y-3">
                   <label className="block text-sm font-semibold text-slate-900">Availability</label>
                   <input type="hidden" name="store" value={form.store} />
-                  <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1">
+                  <div className="post-segmented-control grid grid-cols-2 gap-2 rounded-2xl border p-1">
                     {["Online", "Offline"].map((option) => {
                       const selected = form.store === option;
                       return (
@@ -1249,8 +2076,8 @@ export default function PostClient() {
                           disabled={isPending}
                           className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
                             selected
-                              ? "bg-slate-950 text-white shadow-sm"
-                              : "bg-transparent text-slate-700 hover:bg-slate-100"
+                              ? "post-segmented-control-selected shadow-sm"
+                              : "post-segmented-control-idle"
                           }`}
                         >
                           {option}
@@ -1259,6 +2086,185 @@ export default function PostClient() {
                     })}
                   </div>
                 </div>
+
+                <div className="space-y-3">
+                  <label className="block text-sm font-semibold text-slate-900">Expiration</label>
+                  <div className="post-segmented-control grid grid-cols-2 gap-2 rounded-2xl border p-1">
+                    {[
+                      { value: "none", label: "No expiry" },
+                      { value: "set", label: "Set expiry" },
+                    ].map((option) => {
+                      const selected = form.expirationMode === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleChange("expirationMode", option.value)}
+                          disabled={isPending}
+                          className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                            selected
+                              ? "post-segmented-control-selected shadow-sm"
+                              : "post-segmented-control-idle"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {form.expirationMode === "set" ? (
+                  <div className="space-y-2">
+                    <label htmlFor="expires-at-button" className="block text-sm font-semibold text-slate-950">
+                      Expiry Date
+                    </label>
+                    <div ref={expirationPickerRef} className="relative">
+                      <div
+                        className={`post-date-picker flex h-12 items-center overflow-hidden rounded-2xl border text-sm shadow-sm ${
+                          combinedErrors.expiresAt ? "post-form-field-error" : ""
+                        }`}
+                      >
+                        <span
+                          className={`min-w-0 flex-1 truncate px-4 ${
+                            form.expiresAt ? "font-semibold" : "text-slate-500"
+                          }`}
+                        >
+                          {form.expiresAt ? formatReviewDateTime(form.expiresAt) : "dd/mm/yyyy"}
+                        </span>
+                        <button
+                          id="expires-at-button"
+                          type="button"
+                          onClick={openExpirationPicker}
+                          disabled={isPending}
+                          aria-label="Choose expiry date"
+                          aria-expanded={showExpirationPicker}
+                          className="post-date-picker-button flex h-full w-12 items-center justify-center transition disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          <CalendarIcon />
+                        </button>
+                      </div>
+
+                      {showExpirationPicker ? (
+                        <div className="post-calendar-popover absolute left-0 right-0 top-[calc(100%+0.45rem)] z-30 rounded-2xl border p-4 shadow-2xl">
+                          <div className="flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1));
+                              }}
+                              className="post-calendar-icon-button"
+                              aria-label="Previous month"
+                            >
+                              <span aria-hidden="true">‹</span>
+                            </button>
+                            <p className="text-sm font-bold">{calendarMonthLabel}</p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1));
+                              }}
+                              className="post-calendar-icon-button"
+                              aria-label="Next month"
+                            >
+                              <span aria-hidden="true">›</span>
+                            </button>
+                          </div>
+
+                          <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((dayLabel) => (
+                              <span key={dayLabel}>{dayLabel}</span>
+                            ))}
+                          </div>
+
+                          <div className="mt-2 grid grid-cols-7 gap-1">
+                            {calendarDays.map((day, index) =>
+                              day ? (
+                                <button
+                                  key={`${calendarMonthLabel}-${day}`}
+                                  type="button"
+                                  onClick={() => updateExpirationDate(day)}
+                                  className="post-calendar-day"
+                                  aria-pressed={
+                                    selectedExpirationDate?.getFullYear() === calendarMonth.getFullYear() &&
+                                    selectedExpirationDate?.getMonth() === calendarMonth.getMonth() &&
+                                    selectedExpirationDate?.getDate() === day
+                                  }
+                                >
+                                  {day}
+                                </button>
+                              ) : (
+                                <span key={`blank-${index}`} />
+                              ),
+                            )}
+                          </div>
+
+                          <div className="post-calendar-time-panel mt-4 rounded-2xl border p-3">
+                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Time</p>
+                            <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                              <label className="sr-only" htmlFor="expiry-hour">
+                                Expiry hour
+                              </label>
+                              <select
+                                id="expiry-hour"
+                                value={padDatePart(selectedHour)}
+                                onChange={(event) => updateExpirationTime(Number(event.target.value), selectedMinute)}
+                                className="post-calendar-time-select h-11 rounded-xl border px-3 text-sm font-bold outline-none transition"
+                              >
+                                {Array.from({ length: 24 }, (_, hour) => (
+                                  <option key={hour} value={padDatePart(hour)}>
+                                    {padDatePart(hour)}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="text-sm font-bold text-slate-400">:</span>
+                              <label className="sr-only" htmlFor="expiry-minute">
+                                Expiry minute
+                              </label>
+                              <select
+                                id="expiry-minute"
+                                value={padDatePart(selectedMinute)}
+                                onChange={(event) => updateExpirationTime(selectedHour, Number(event.target.value))}
+                                className="post-calendar-time-select h-11 rounded-xl border px-3 text-sm font-bold outline-none transition"
+                              >
+                                {[0, 15, 30, 45].map((minute) => (
+                                  <option key={minute} value={padDatePart(minute)}>
+                                    {padDatePart(minute)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setDraftExpiresAt("")}
+                              className="post-calendar-text-button"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              type="button"
+                              onClick={saveExpirationDraft}
+                              className="post-calendar-done-button"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="space-y-1 text-sm leading-5">
+                      {combinedErrors.expiresAt ? (
+                        <p id="expires-at-error" className="font-semibold text-rose-700">
+                          {combinedErrors.expiresAt}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
 
                 <SelectField
                   id="category"
@@ -1278,303 +2284,241 @@ export default function PostClient() {
                   label="Sub Category"
                   value={form.subCategory}
                   options={subCategoryOptions}
+                  required={subCategoryOptions.length > 0}
                   hint={
                     form.category && subCategoryOptions.length === 0
                       ? "No sub category needed."
                       : undefined
                   }
+                  error={combinedErrors.subCategory}
                   disabled={isPending}
                   onChange={(value) => handleChange("subCategory", value)}
                 />
-
-                {detectedType ? (
-                  <div className="sm:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                    Suggested: <span className="font-semibold">{detectedType}</span>
-                  </div>
-                ) : null}
               </section>
             ) : null}
 
-            {currentStep === 3 ? (
+            {currentStep === 4 ? (
               <form
                 id="deal-review-form"
                 action={formAction}
                 onSubmit={handleSubmit}
+                autoComplete="off"
                 className="space-y-5"
                 aria-busy={isPending}
               >
                 {isPending ? (
-                  <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm" aria-live="polite">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
-                        <SpinnerIcon className="h-5 w-5" />
-                      </span>
+                  <div className="post-loading-status py-4" aria-live="polite">
+                    <div className="flex flex-col items-center gap-3 text-center">
                       <div>
-                        <p className="text-base font-semibold text-slate-950">Submitting your deal</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
-                          We are saving the deal, checking moderation status, and preparing the confirmation.
+                        <p className="post-loading-title text-base font-semibold">Submitting deal</p>
+                        <p className="post-loading-copy mt-1 text-sm leading-6">
+                          Saving details, checking moderation, and preparing confirmation.
                         </p>
                       </div>
+                      <div className="post-loading-dots" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
                     </div>
-                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full w-2/3 animate-pulse rounded-full bg-slate-950" />
+                    <div className="post-loading-track mx-auto mt-4">
+                      <div className="post-loading-bar" />
                     </div>
                   </div>
                 ) : null}
 
                 {canShowDuplicateCheck && duplicateCheck?.match ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950" aria-live="polite">
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="font-semibold">Possible duplicate</p>
-                        <p className="mt-1 text-amber-900">{getDuplicateReasonLabel(duplicateCheck.match.reason)}</p>
+                  <div className="post-inline-warning px-1 py-2 text-sm" aria-live="polite">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
+                            {"\u26A0"}
+                          </span>
+                          Possible duplicate
+                        </p>
+                        <p className="mt-1">{getDuplicateReasonLabel(duplicateCheck.match.reason)}</p>
                       </div>
-                      <p className="text-sm font-medium text-amber-950 sm:max-w-sm sm:text-right">
-                        {duplicateCheck.match.title}
-                      </p>
                     </div>
-                  </div>
-                ) : canShowDuplicateCheck && isCheckingDuplicate ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600" aria-live="polite">
-                    Checking duplicates...
                   </div>
                 ) : null}
 
-                <section className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-                    <div className="min-w-0 space-y-5">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                          Review
-                        </p>
-                        <h2 className="mt-2 break-words text-2xl font-semibold text-slate-950">
-                          {form.title || "Untitled deal"}
-                        </h2>
-                      </div>
-
-                      <dl className="grid gap-4 sm:grid-cols-2">
-                        <ReviewField label="Deal price" value={formatReviewPrice(form.price)} />
-                        <ReviewField
-                          label="Original price"
-                          value={form.originalPrice ? formatReviewPrice(form.originalPrice) : "-"}
-                        />
-                        <ReviewField
-                          label="Category"
-                          value={form.subCategory ? `${form.category} / ${form.subCategory}` : form.category || "-"}
-                        />
-                        <ReviewField label="Store / availability" value={form.store || "-"} />
-                        <ReviewField
-                          label="Deal URL"
-                          value={urlHost || "-"}
-                          className="sm:col-span-2"
-                        />
-                        <ReviewField
-                          label="Description"
-                          value={form.description || "-"}
-                          className="sm:col-span-2"
-                        />
-                      </dl>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div
-                        className={`relative overflow-hidden rounded-2xl border bg-white shadow-sm ${
-                          combinedErrors.imageName || imageLoadError
-                            ? "border-rose-200"
-                            : "border-slate-200"
-                        }`}
-                      >
+                <section className="post-preview-panel rounded-3xl border p-4 sm:p-6">
+                  <article>
+                    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+                      <div className="post-preview-canvas post-review-image-frame relative flex min-h-[260px] flex-col justify-center rounded-xl p-5">
                         {form.imageUrl ? (
                           <button
                             type="button"
                             onClick={() => handleChange("imageUrl", "")}
                             disabled={isPending}
-                            aria-label="Remove autofilled image"
+                            aria-label="Remove product image"
                             className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
                           >
                             <RemoveIcon />
                           </button>
                         ) : null}
-                        <div className="flex aspect-[4/3] items-center justify-center bg-slate-100 p-4">
-                          {productImageUrl ? (
+                        {activeReviewPhotoUrl ? (
+                          <>
+                            {showReviewPhotoControls ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveReviewPhotoIndex((current) =>
+                                      current === 0 ? submittedGalleryUrls.length - 1 : current - 1,
+                                    );
+                                  }}
+                                  className="post-review-gallery-arrow left-2"
+                                  aria-label="Previous review photo"
+                                >
+                                  <span aria-hidden="true">{"<"}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveReviewPhotoIndex((current) =>
+                                      current >= submittedGalleryUrls.length - 1 ? 0 : current + 1,
+                                    );
+                                  }}
+                                  className="post-review-gallery-arrow right-2"
+                                  aria-label="Next review photo"
+                                >
+                                  <span aria-hidden="true">{">"}</span>
+                                </button>
+                              </>
+                            ) : null}
                             <UserImage
-                              src={productImageUrl}
+                              src={activeReviewPhotoUrl}
                               alt="Product photo preview"
-                              className="h-full w-full rounded-xl object-contain"
-                              onError={form.imageUrl ? handleScrapedImageError : undefined}
+                              className="max-h-52 w-full rounded-lg object-contain"
+                              onError={activeReviewPhotoIndex === 0 && form.imageUrl ? handleScrapedImageError : undefined}
                             />
-                          ) : (
-                            <div className="flex flex-col items-center px-4 text-center text-slate-500">
-                              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400">
-                                <ImageIcon />
-                              </span>
-                              <p className="mt-3 text-sm font-semibold text-slate-700">
-                                Product photo required
-                              </p>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
-                                Add a clear image of the item or promo.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="border-t border-slate-200 bg-white px-4 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-950">Product photo</p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {form.imageUrl ? "Autofilled from the link." : "Used as the deal thumbnail."}
-                              </p>
-                            </div>
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              Required
+                            {submittedGalleryUrls.length > 1 ? (
+                              <div className="post-review-gallery mt-4 grid w-full grid-cols-4 gap-2">
+                                {submittedGalleryUrls.map((imageUrl, index) => (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveReviewPhotoIndex(index)}
+                                    key={`${imageUrl.slice(0, 32)}-review-${index}`}
+                                    className={`post-review-gallery-thumb ${
+                                      index === activeReviewPhotoIndex ? "post-review-gallery-thumb-active" : ""
+                                    }`}
+                                    aria-label={`Show review product photo ${index + 1}`}
+                                  >
+                                    <UserImage
+                                      src={imageUrl}
+                                      alt={`Review product photo ${index + 1}`}
+                                      className="h-full w-full object-contain"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-center px-4 text-center text-slate-500">
+                            <span className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400">
+                              <ImageIcon />
                             </span>
+                            <p className="mt-3 text-sm font-semibold text-slate-700">
+                              Product photo required
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Add a clear image of the item or promo.
+                            </p>
                           </div>
-                          {form.imageName ? (
-                            <p className="mt-2 truncate text-xs text-slate-500">
-                              {form.imageName}
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                          Preview
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="post-review-pill rounded-full border px-3 py-1 text-xs font-bold">
+                            {form.store || "Online"}
+                          </span>
+                          <span className="post-review-pill rounded-full border px-3 py-1 text-xs font-bold">
+                            {form.subCategory ? `${form.category} / ${form.subCategory}` : form.category || "Category"}
+                          </span>
+                          {discountLabel ? (
+                            <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+                              {discountLabel}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <h2 className="post-review-title mt-4 break-words text-2xl font-bold tracking-tight sm:text-3xl">
+                          {form.title || "Untitled deal"}
+                        </h2>
+
+                        <div className="mt-4 flex flex-wrap items-end gap-3">
+                          <p className="text-3xl font-bold tracking-tight text-[#dc115e]">
+                            {formatReviewPrice(form.price)}
+                          </p>
+                          {form.originalPrice ? (
+                            <p className="pb-1 text-sm font-medium text-slate-500 line-through">
+                              {formatReviewPrice(form.originalPrice)}
                             </p>
                           ) : null}
                         </div>
+
+                        <div className="post-review-divider mt-5 grid gap-3 border-t pt-4 text-sm sm:grid-cols-2">
+                          <ReviewField
+                            label="Shipping"
+                            value={formatReviewShipping(form.shippingMode, form.shippingCost)}
+                          />
+                          <ReviewField
+                            label="Expiration"
+                            value={
+                              form.expirationMode === "set"
+                                ? formatReviewDateTime(form.expiresAt)
+                                : "No expiry date"
+                            }
+                          />
+                          <ReviewField
+                            label="Deal URL"
+                            value={urlHost || "-"}
+                            className="sm:col-span-2"
+                          />
+                        </div>
                       </div>
-
-                      {imageLoadError ? (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                          The autofilled image could not be loaded. Upload a product photo manually to continue.
-                        </div>
-                      ) : null}
-
-                      {combinedErrors.imageName ? (
-                        <p className="text-sm font-medium text-rose-700">{combinedErrors.imageName}</p>
-                      ) : null}
-
-                      {shouldShowProductUpload ? (
-                        <label
-                          className={`flex min-h-[116px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 text-center text-sm font-semibold transition focus-within:outline-none focus-within:ring-4 ${
-                            combinedErrors.imageName
-                              ? "border-rose-300 bg-rose-50 text-rose-700 hover:border-rose-400 focus-within:ring-rose-100"
-                              : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 focus-within:ring-slate-200"
-                          }`}
-                        >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm">
-                            <UploadIcon />
-                          </span>
-                          <span className="mt-3">{submittedImageUrl ? "Change photo" : "Upload product photo"}</span>
-                          <span className="mt-1 text-xs font-medium text-slate-400">
-                            Large images are handled automatically.
-                          </span>
-                          <input
-                            name="productImageFile"
-                            type="file"
-                            accept="image/*"
-                            className="sr-only"
-                            aria-invalid={Boolean(combinedErrors.imageName)}
-                            disabled={isPending}
-                            onChange={handleProductImageChange}
-                          />
-                        </label>
-                      ) : null}
                     </div>
-                  </div>
-                </section>
 
-                <section className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h3 className="text-base font-semibold text-slate-950">Optional photos</h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Add extra angles or screenshots. Up to {maxGalleryImages - 1}.
-                      </p>
+                    <div className="post-review-divider mt-6 border-t pt-5">
+                      <h3 className="post-review-title text-base font-bold">Description</h3>
+                      {getDescriptionText(form.description) ? (
+                        <div
+                          className="deal-detail-description post-review-description mt-4 text-sm leading-7"
+                          dangerouslySetInnerHTML={{ __html: sanitizeDescriptionHtml(form.description) }}
+                        />
+                      ) : (
+                        <p className="mt-4 text-sm text-slate-500">No description added.</p>
+                      )}
                     </div>
-                    {form.optionalImageUrls.length ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setForm((current) => ({
-                            ...current,
-                            optionalImageNames: [],
-                            optionalImageUrls: [],
-                            imageGalleryUrls: current.uploadedImageUrl ? [current.uploadedImageUrl] : [],
-                          }));
-                        }}
-                        disabled={isPending}
-                        className="text-sm font-semibold text-slate-500 transition hover:text-slate-950"
-                      >
-                        Remove all
-                      </button>
-                    ) : null}
-                  </div>
+                  </article>
 
-                  {form.optionalImageUrls.length ? (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      {form.optionalImageUrls.map((imageUrl, index) => (
-                        <div key={`${imageUrl.slice(0, 32)}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setForm((current) => {
-                                const optionalImageUrls = current.optionalImageUrls.filter((_, photoIndex) => photoIndex !== index);
-                                const optionalImageNames = current.optionalImageNames.filter((_, photoIndex) => photoIndex !== index);
-
-                                return {
-                                  ...current,
-                                  optionalImageUrls,
-                                  optionalImageNames,
-                                  imageGalleryUrls: [current.uploadedImageUrl, ...optionalImageUrls].filter(Boolean).slice(0, maxGalleryImages),
-                                };
-                              });
-                            }}
-                            disabled={isPending}
-                            aria-label={`Remove optional photo ${index + 1}`}
-                            className="absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
-                          >
-                            <RemoveIcon />
-                          </button>
-                          <UserImage
-                            src={imageUrl}
-                            alt={`Optional deal preview ${index + 1}`}
-                            className="aspect-[4/3] w-full object-contain p-2"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <label
-                    className={`mt-4 flex min-h-[88px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center text-sm font-semibold transition focus-within:outline-none focus-within:ring-4 ${
-                      combinedErrors.imageName
-                        ? "border-rose-300 bg-rose-50 text-rose-700 hover:border-rose-400 focus-within:ring-rose-100"
-                      : "border-slate-300 bg-slate-50 text-slate-600 hover:border-slate-400 hover:bg-white focus-within:ring-slate-200"
-                    }`}
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <UploadIcon />
-                      Add optional photo
-                    </span>
-                    <span className="mt-1 text-xs font-medium text-slate-400">
-                      Upload one at a time.
-                    </span>
-                    <input
-                      name="optionalImageFile"
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      aria-invalid={Boolean(combinedErrors.imageName)}
-                      disabled={isPending}
-                      onChange={handleOptionalImageChange}
-                    />
-                  </label>
-                  {combinedErrors.imageName ? (
-                    <p className="mt-2 text-sm font-medium text-rose-700">{combinedErrors.imageName}</p>
-                  ) : null}
                 </section>
 
                 <input type="hidden" name="title" value={form.title} />
                 <input type="hidden" name="url" value={form.url} />
                 <input type="hidden" name="price" value={form.price} />
                 <input type="hidden" name="originalPrice" value={form.originalPrice} />
+                <input type="hidden" name="shippingMode" value={form.shippingMode} />
+                <input
+                  type="hidden"
+                  name="shippingCost"
+                  value={form.shippingMode === "paid" ? form.shippingCost : ""}
+                />
                 <input type="hidden" name="store" value={form.store} />
                 <input type="hidden" name="category" value={form.category} />
                 <input type="hidden" name="subCategory" value={form.subCategory} />
+                <input
+                  type="hidden"
+                  name="expiresAt"
+                  value={form.expirationMode === "set" ? form.expiresAt : ""}
+                />
                 <input type="hidden" name="description" value={form.description} />
                 <input type="hidden" name="imageUrl" value={form.imageUrl} />
                 <input type="hidden" name="uploadedImageUrl" value={form.uploadedImageUrl} />
@@ -1582,16 +2526,20 @@ export default function PostClient() {
               </form>
             ) : null}
 
-            <div className="sticky bottom-0 z-10 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:static sm:mx-0 sm:rounded-none sm:border-none sm:bg-transparent sm:px-0 sm:shadow-none">
+            <div className="post-action-bar sticky bottom-0 z-10 -mx-5 px-5 py-4 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:shadow-none">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  disabled={currentStep === 0 || isPending}
-                  className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Back
-                </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  {currentStep > 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      disabled={isPending}
+                      className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-6 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Back
+                    </button>
+                  ) : null}
+                </div>
 
                 {currentStep < finalStep ? (
                   <button
@@ -1602,35 +2550,91 @@ export default function PostClient() {
                       event.stopPropagation();
                       handleNext();
                     }}
-                    disabled={isFetching || isPending}
-                    className="inline-flex h-12 items-center justify-center rounded-full bg-slate-950 px-8 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    disabled={isFetching || isPending || (currentStep === 0 && (isCheckingDuplicate || hasDuplicateMatch))}
+                    className="post-primary-button inline-flex h-12 items-center justify-center rounded-full px-8 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isFetching ? "Checking..." : "Next"}
+                    Next
                   </button>
                 ) : (
-                  <button
-                    key="post-deal"
-                    type="submit"
-                    form="deal-review-form"
-                    disabled={!canSubmit}
-                    aria-busy={isPending}
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-8 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  >
-                    {isPending ? (
-                      <>
-                        <SpinnerIcon />
-                        Submitting deal
-                      </>
-                    ) : (
-                      "Submit deal"
-                    )}
-                  </button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <button
+                      type="button"
+                      onClick={handleDiscard}
+                      disabled={isPending}
+                      className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-6 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Discard
+                    </button>
+                    <button
+                      key="post-deal"
+                      type="submit"
+                      form="deal-review-form"
+                      disabled={!canSubmit}
+                      aria-busy={isPending}
+                      className="post-primary-button inline-flex h-12 items-center justify-center gap-2 rounded-full px-8 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isPending ? (
+                        <>
+                          <SpinnerIcon />
+                          Submitting deal
+                        </>
+                      ) : (
+                        "Submit deal"
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
           </div>
         </FormContainer>
       </div>
+
+      {isDiscardPromptOpen ? (
+        <div
+          className="post-discard-overlay fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsDiscardPromptOpen(false);
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="discard-deal-title"
+            aria-describedby="discard-deal-description"
+            className="post-discard-dialog w-full max-w-md rounded-3xl border p-5 shadow-2xl sm:p-6"
+          >
+            <div>
+              <h2 id="discard-deal-title" className="text-xl font-bold tracking-tight text-slate-950">
+                Discard this deal?
+              </h2>
+              <p id="discard-deal-description" className="mt-2 text-sm leading-6 text-slate-600">
+                Your entered details will be removed and you will return to the homepage.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setIsDiscardPromptOpen(false)}
+                className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-5 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={confirmDiscard}
+                className="post-primary-button inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+              >
+                Discard
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

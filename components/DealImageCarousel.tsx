@@ -35,7 +35,7 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
   return (
     <div className="deal-image-carousel grid grid-cols-[40px_minmax(0,1fr)] gap-2 overflow-hidden">
       {hasMultipleImages ? (
-        <div className="deal-image-carousel-thumbs flex max-h-[240px] flex-col gap-2 overflow-y-auto">
+        <div className="deal-image-carousel-thumbs flex max-h-[336px] flex-col gap-2 overflow-y-auto">
           {images.map((image, index) => (
             <button
               key={`${image.slice(0, 32)}-${index}`}
@@ -55,12 +55,12 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
       )}
 
       <div
-        className="deal-image-carousel-stage deal-image-carousel-stage-size relative flex items-center justify-center overflow-hidden rounded-2xl border"
+        className="deal-image-carousel-stage deal-image-carousel-stage-size relative flex items-center justify-center"
       >
         <UserImage
           src={activeImage}
           alt={title}
-          className="deal-image-carousel-main-image object-contain"
+          className="deal-image-carousel-main-image rounded-2xl object-cover"
         />
 
         {hasMultipleImages ? (

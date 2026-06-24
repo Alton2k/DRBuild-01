@@ -1,5 +1,5 @@
-import { getDeals } from "@/lib/deals";
-import { getAdminComments } from "@/lib/comments";
+import { getDealsResult, type Deal } from "@/lib/deals";
+import { getAdminCommentsResult } from "@/lib/comments";
 import { getAdminEmails, getCurrentUser, isAdminUser } from "@/lib/auth";
 import CommentModerationTable, { CommentModerationRow } from "@/components/admin/CommentModerationTable";
 import DealModerationTable, { DealModerationRow } from "@/components/admin/DealModerationTable";
@@ -51,7 +51,7 @@ function getUserStatus(input: {
   return "new-user";
 }
 
-function getUserRows(deals: Awaited<ReturnType<typeof getDeals>>, adminEmails: string[]) {
+function getUserRows(deals: Deal[], adminEmails: string[]) {
   const users = new Map<string, UserOverviewRow>();
 
   for (const deal of deals) {
@@ -102,8 +102,11 @@ export default async function AdminDashboardPage() {
   const isAdmin = isAdminUser(user);
   const adminEmails = getAdminEmails();
   const hasAdminConfig = adminEmails.length > 0;
-  const deals = await getDeals();
-  const comments = await getAdminComments();
+  const [dealsResult, commentsResult] = await Promise.all([getDealsResult(), getAdminCommentsResult()]);
+  const deals = dealsResult.ok ? dealsResult.data : [];
+  const comments = commentsResult.ok ? commentsResult.data : [];
+  const dealsUnavailable = !dealsResult.ok;
+  const commentsUnavailable = !commentsResult.ok;
   const userRows = getUserRows(deals, adminEmails);
   const pendingDealCount = deals.filter((deal) => deal.status === "pending").length;
   const approvedDealCount = deals.filter((deal) => deal.status === "approved").length;
@@ -209,6 +212,16 @@ export default async function AdminDashboardPage() {
                   {autoApprovalRate}% auto-approved
                 </div>
               </div>
+
+              {dealsUnavailable || commentsUnavailable ? (
+                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+                  {dealsUnavailable && commentsUnavailable
+                    ? "Deals and comments are temporarily unavailable."
+                    : dealsUnavailable
+                      ? "Deals are temporarily unavailable."
+                      : "Comments are temporarily unavailable."}
+                </div>
+              ) : null}
 
               <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">

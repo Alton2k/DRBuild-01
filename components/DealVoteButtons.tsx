@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { voteDealAction, type VoteDirection } from "@/app/actions";
+import { VoteChevronIcon } from "@/components/icons";
 
 interface DealVoteButtonsProps {
   dealId: string;
@@ -11,6 +12,7 @@ interface DealVoteButtonsProps {
   scoreClassName?: string;
   buttonClassName?: string;
   containerClassName?: string;
+  disabled?: boolean;
 }
 
 const defaultScoreClassName =
@@ -48,23 +50,6 @@ function getVoteStorageKey(dealId: string) {
   return `deal-rakyat:deal-vote:${dealId}`;
 }
 
-function ChevronIcon({ direction }: { direction: "up" | "down" }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2.4"
-    >
-      {direction === "up" ? <path d="m6 15 6-6 6 6" /> : <path d="m6 9 6 6 6-6" />}
-    </svg>
-  );
-}
-
 export default function DealVoteButtons({
   dealId,
   initialScore,
@@ -73,18 +58,25 @@ export default function DealVoteButtons({
   scoreClassName = defaultScoreClassName,
   buttonClassName = defaultButtonClassName,
   containerClassName = defaultContainerClassName,
+  disabled = false,
 }: DealVoteButtonsProps) {
   const [score, setScore] = useState(initialScore);
   const [selectedVote, setSelectedVote] = useState<VoteDirection | null>(initialVote);
+  const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const vote = (direction: VoteDirection) => {
+    if (disabled) {
+      return;
+    }
+
     const previousVote = selectedVote;
     const nextVote = previousVote === direction ? null : direction;
     const previousDelta = previousVote === "up" ? 1 : previousVote === "down" ? -1 : 0;
     const nextDelta = nextVote === "up" ? 1 : nextVote === "down" ? -1 : 0;
     const scoreDelta = nextDelta - previousDelta;
 
+    setErrorMessage("");
     setScore((current) => current + scoreDelta);
     setSelectedVote(nextVote);
 
@@ -100,6 +92,7 @@ export default function DealVoteButtons({
       if (!result.ok) {
         setScore((current) => current - scoreDelta);
         setSelectedVote(previousVote);
+        setErrorMessage(result.message ?? "Could not save your vote right now. Please try again.");
 
         if (previousVote) {
           window.localStorage.setItem(getVoteStorageKey(dealId), previousVote);
@@ -122,45 +115,55 @@ export default function DealVoteButtons({
   };
 
   return (
-    <div
-      className={`deal-vote-control ${containerClassName} ${
-        selectedVote ? selectedContainerClassNames[selectedVote] : neutralContainerClassName
-      }`}
-      aria-label="Deal voting"
-    >
-      <button
-        type="button"
-        aria-label={selectedVote === "up" ? "Remove upvote" : "Upvote deal"}
-        onClick={() => vote("up")}
-        disabled={isPending}
-        aria-pressed={selectedVote === "up"}
-        className={`deal-vote-button ${buttonClassName} ${
-          selectedVote === "up" ? selectedButtonClassNames.up : neutralButtonClassName
+    <div className="flex flex-col gap-2">
+      <div
+        className={`deal-vote-control ${containerClassName} ${
+          selectedVote ? selectedContainerClassNames[selectedVote] : neutralContainerClassName
         }`}
+        aria-label="Deal voting"
       >
-        <ChevronIcon direction="up" />
-      </button>
-      {showScore ? (
-        <span
-          className={`deal-vote-score ${scoreClassName} ${
-            selectedVote ? selectedScoreClassNames[selectedVote] : neutralScoreClassName
+        <button
+          type="button"
+          aria-label={selectedVote === "up" ? "Remove upvote" : "Upvote deal"}
+          onClick={() => vote("up")}
+          disabled={isPending || disabled}
+          aria-pressed={selectedVote === "up"}
+          className={`deal-vote-button ${buttonClassName} ${
+            selectedVote === "up" ? selectedButtonClassNames.up : neutralButtonClassName
           }`}
         >
-          {score}
-        </span>
+          <VoteChevronIcon direction="up" />
+        </button>
+        {showScore ? (
+          <span
+            className={`deal-vote-score ${scoreClassName} ${
+              selectedVote ? selectedScoreClassNames[selectedVote] : neutralScoreClassName
+            }`}
+          >
+            {score}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={selectedVote === "down" ? "Remove downvote" : "Downvote deal"}
+          onClick={() => vote("down")}
+          disabled={isPending || disabled}
+          aria-pressed={selectedVote === "down"}
+          className={`deal-vote-button ${buttonClassName} ${
+            selectedVote === "down" ? selectedButtonClassNames.down : neutralButtonClassName
+          }`}
+        >
+          <VoteChevronIcon direction="down" />
+        </button>
+      </div>
+      {errorMessage ? (
+        <p className="theme-alert theme-alert-warning max-w-64 px-3 py-2 text-xs font-semibold leading-5" aria-live="polite">
+          <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
+            {"\u26A0"}
+          </span>
+          {errorMessage}
+        </p>
       ) : null}
-      <button
-        type="button"
-        aria-label={selectedVote === "down" ? "Remove downvote" : "Downvote deal"}
-        onClick={() => vote("down")}
-        disabled={isPending}
-        aria-pressed={selectedVote === "down"}
-        className={`deal-vote-button ${buttonClassName} ${
-          selectedVote === "down" ? selectedButtonClassNames.down : neutralButtonClassName
-        }`}
-      >
-        <ChevronIcon direction="down" />
-      </button>
     </div>
   );
 }

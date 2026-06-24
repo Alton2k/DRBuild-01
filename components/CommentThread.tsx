@@ -1,14 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { createCommentAction, deleteOwnCommentAction, likeCommentAction } from "@/app/actions";
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createCommentAction, deleteOwnCommentAction, likeCommentAction, type CommentActionState } from "@/app/actions";
+import UserImage from "./UserImage";
 
 export interface ThreadComment {
   id: string;
   dealId: string;
   parentId: string | null;
   authorName: string;
+  authorAvatarUrl?: string;
+  authorProfileHref?: string;
   body: string;
   likeCount: number;
   viewerHasLiked: boolean;
@@ -19,6 +23,8 @@ export interface ThreadComment {
 interface CommentThreadProps {
   dealId: string;
   comments: ThreadComment[];
+  readOnly?: boolean;
+  currentUserName?: string | null;
 }
 
 interface CommentNode extends ThreadComment {
@@ -26,6 +32,10 @@ interface CommentNode extends ThreadComment {
 }
 
 const maxPreviewReplies = 3;
+const initialCommentState: CommentActionState = {
+  ok: false,
+  message: "",
+};
 
 function formatCommentTime(value: string) {
   return new Intl.DateTimeFormat("en-MY", {
@@ -68,6 +78,17 @@ function compareRepliesByRelevance(first: CommentNode, second: CommentNode) {
   }
 
   return new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime();
+}
+
+function getCommentInitials(name: string) {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
+  return initials || "?";
 }
 
 function EllipsisIcon() {
@@ -129,45 +150,57 @@ function CommentForm({
   dealId,
   parentId,
   buttonLabel,
-  onSubmit,
+  onPosted,
 }: {
   dealId: string;
   parentId?: string;
   buttonLabel: string;
-  onSubmit?: () => void;
+  onPosted?: () => void;
 }) {
   const postComment = createCommentAction.bind(null, dealId);
+  const [state, formAction, isPending] = useActionState(postComment, initialCommentState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (!state.ok) {
+      return;
+    }
+
+    formRef.current?.reset();
+    onPosted?.();
+  }, [onPosted, state.ok]);
 
   return (
-    <form action={postComment} onSubmit={onSubmit} className="grid gap-4">
+    <form ref={formRef} action={formAction} className="grid gap-2">
       {parentId ? <input type="hidden" name="parentId" value={parentId} /> : null}
-      <label className="grid gap-2 text-sm font-semibold text-slate-950">
-        Name
-        <input
-          name="authorName"
-          required
-          maxLength={80}
-          className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-normal text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
-          placeholder="Your name"
-        />
-      </label>
-      <label className="grid gap-2 text-sm font-semibold text-slate-950">
-        Comment
+      <label className="comment-form-label grid gap-2 text-sm font-bold">
+        <span className="sr-only">Comment</span>
         <textarea
           name="body"
           required
           maxLength={1000}
-          rows={parentId ? 3 : 4}
-          className="resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal leading-6 text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
-          placeholder={parentId ? "Write a reply..." : "Is this legit? Any voucher code? Cheaper elsewhere?"}
+          rows={parentId ? 2 : 3}
+          className={`comment-form-field resize-none rounded-2xl border px-4 py-3 text-sm font-normal leading-6 outline-none transition ${
+            parentId ? "h-24" : "h-28"
+          }`}
+          placeholder={parentId ? "Write a reply..." : "Post a comment..."}
         />
       </label>
       <button
         type="submit"
-        className="inline-flex h-11 w-fit items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+        disabled={isPending}
+        className="comment-submit-button inline-flex h-10 w-fit items-center justify-center justify-self-end rounded-full px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 disabled:cursor-wait disabled:opacity-60"
       >
-        {buttonLabel}
+        {isPending ? "Posting..." : buttonLabel}
       </button>
+      {state.message && !state.ok ? (
+        <p className="theme-alert theme-alert-warning px-3 py-2 text-xs font-semibold leading-5" aria-live="polite">
+          <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
+            {"\u26A0"}
+          </span>
+          {state.message}
+        </p>
+      ) : null}
     </form>
   );
 }
@@ -177,11 +210,15 @@ function CommentCard({
   dealId,
   depth,
   onDeleted,
+  readOnly,
+  currentUserName,
 }: {
   comment: CommentNode;
   dealId: string;
   depth: number;
   onDeleted: (comment: CommentNode) => void;
+  readOnly: boolean;
+  currentUserName?: string | null;
 }) {
   const [isReplying, setIsReplying] = useState(false);
   const [likeCount, setLikeCount] = useState(comment.likeCount);
@@ -226,6 +263,10 @@ function CommentCard({
   }, [isMenuOpen]);
 
   const like = () => {
+    if (readOnly) {
+      return;
+    }
+
     const previousLikeCount = likeCount;
     const previousViewerHasLiked = viewerHasLiked;
     const nextViewerHasLiked = !previousViewerHasLiked;
@@ -275,39 +316,50 @@ function CommentCard({
   };
 
   return (
-    <article className={depth === 0 ? "py-4 first:pt-0 last:pb-0" : "py-3"}>
-      <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${isDeleting ? "opacity-60" : ""}`}>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-950">{comment.authorName}</h3>
-          <time dateTime={comment.createdAt} className="text-xs font-medium text-slate-500">
-            {formatCommentTime(comment.createdAt)}
-          </time>
+    <article className={depth === 0 ? "py-5 first:pt-0 last:pb-0" : "py-4"}>
+      <div className={`comment-body grid grid-cols-[40px_minmax(0,1fr)] gap-3 ${isDeleting ? "opacity-60" : ""}`}>
+        {comment.authorProfileHref ? (
+          <Link
+            href={comment.authorProfileHref}
+            aria-label={`View ${comment.authorName}'s profile`}
+            className="comment-avatar flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-sm font-bold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
+          >
+            {comment.authorAvatarUrl ? (
+              <UserImage src={comment.authorAvatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              getCommentInitials(comment.authorName)
+            )}
+          </Link>
+        ) : (
+        <div className="comment-avatar flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-sm font-bold">
+          {comment.authorAvatarUrl ? (
+            <UserImage src={comment.authorAvatarUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            getCommentInitials(comment.authorName)
+          )}
         </div>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{comment.body}</p>
-        <div className="mt-3 flex items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={like}
-              disabled={isPending || isDeleting}
-              aria-pressed={viewerHasLiked}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <LikeIcon filled={viewerHasLiked} />
-              {viewerHasLiked ? "Liked" : "Like"} {likeCount}
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsReplying((current) => !current)}
-              disabled={isDeleting}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <ReplyIcon />
-              {isReplying ? "Cancel reply" : "Reply"}
-            </button>
-          </div>
+        )}
+        <div className="min-w-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h3 className="comment-author text-sm font-bold">
+                  {comment.authorProfileHref ? (
+                    <Link href={comment.authorProfileHref}>
+                      {comment.authorName}
+                    </Link>
+                  ) : (
+                    comment.authorName
+                  )}
+                </h3>
+                <time dateTime={comment.createdAt} className="comment-time text-xs font-medium">
+                  {formatCommentTime(comment.createdAt)}
+                </time>
+              </div>
+              <p className="comment-text mt-1.5 whitespace-pre-wrap text-sm leading-6">{comment.body}</p>
+            </div>
 
-          <div ref={menuRef} className="relative shrink-0">
+            <div ref={menuRef} className="relative shrink-0">
             <button
               type="button"
               aria-label="Comment actions"
@@ -316,8 +368,8 @@ function CommentCard({
               aria-controls={isMenuOpen ? menuId : undefined}
               onClick={() => setIsMenuOpen((current) => !current)}
               disabled={isDeleting}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-full border text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 ${
-                isMenuOpen ? "border-slate-300 bg-slate-100 text-slate-950" : "border-slate-200 bg-white"
+              className={`comment-menu-button inline-flex h-8 w-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-60 ${
+                isMenuOpen ? "comment-menu-button-open" : ""
               }`}
             >
               <EllipsisIcon />
@@ -327,13 +379,13 @@ function CommentCard({
               <div
                 id={menuId}
                 role="menu"
-                className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 text-sm shadow-md"
+                className="comment-menu-panel absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-2xl border p-1 text-sm shadow-md"
               >
                 <button
                   type="button"
                   role="menuitem"
                   onClick={showEditPlaceholder}
-                  className="flex w-full items-center rounded-xl px-3 py-2 text-left font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                  className="comment-menu-item flex w-full items-center rounded-xl px-3 py-2 text-left font-bold transition focus-visible:outline-none focus-visible:ring-4"
                 >
                   Edit comment
                 </button>
@@ -344,36 +396,72 @@ function CommentCard({
                   disabled={isDeleting}
                   className={`flex w-full items-center rounded-xl px-3 py-2 text-left font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 ${
                     comment.canDelete
-                      ? "text-rose-700 hover:bg-rose-50"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                      ? "comment-menu-item-danger"
+                      : "comment-menu-item-muted"
                   }`}
                 >
                   {isDeleting ? "Deleting..." : "Delete comment"}
                 </button>
               </div>
             ) : null}
+            </div>
           </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              onClick={like}
+              disabled={isPending || isDeleting || readOnly}
+              aria-pressed={viewerHasLiked}
+              className="comment-action-button inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <LikeIcon filled={viewerHasLiked} />
+              {likeCount}
+            </button>
+            {readOnly ? null : (
+              <button
+                type="button"
+                onClick={() => setIsReplying((current) => !current)}
+                disabled={isDeleting}
+                className="comment-action-button inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ReplyIcon />
+                {isReplying ? "Cancel reply" : "Reply"}
+              </button>
+            )}
+          </div>
+
+          {actionMessage ? (
+            <p className="theme-alert theme-alert-info mt-3 px-3 py-2 text-xs font-medium leading-5" aria-live="polite">
+              {actionMessage}
+            </p>
+          ) : null}
         </div>
-        {actionMessage ? (
-          <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-600" aria-live="polite">
-            {actionMessage}
-          </p>
-        ) : null}
       </div>
 
-      {isReplying ? (
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <CommentForm
-            dealId={dealId}
-            parentId={comment.id}
-            buttonLabel="Post reply"
-            onSubmit={() => setIsReplying(false)}
-          />
-        </div>
+      {isReplying && !readOnly ? (
+        currentUserName ? (
+          <div className="ml-[52px] mt-3">
+            <CommentForm
+              dealId={dealId}
+              parentId={comment.id}
+              buttonLabel="Post reply"
+              onPosted={() => setIsReplying(false)}
+            />
+          </div>
+        ) : (
+          <p className="comment-time ml-[52px] mt-3 text-sm font-medium">
+            Please{" "}
+            <a href={`/auth?mode=login&next=/deal/${dealId}#comments`} className="font-bold text-[#dc115e]">
+              log in
+            </a>{" "}
+            to reply.
+          </p>
+        )
       ) : null}
 
       {comment.replies.length > 0 ? (
-        <div className="ml-4 mt-3 border-l-2 border-slate-200 pl-4">
+        <div className="comment-replies ml-5 mt-3 pl-7">
           {visibleReplies.map((reply) => (
             <CommentCard
               key={reply.id}
@@ -381,13 +469,15 @@ function CommentCard({
               dealId={dealId}
               depth={depth + 1}
               onDeleted={onDeleted}
+              readOnly={readOnly}
+              currentUserName={currentUserName}
             />
           ))}
           {hiddenReplyCount > 0 ? (
             <button
               type="button"
               onClick={() => setShowAllReplies((current) => !current)}
-              className="mt-2 inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+              className="comment-more-replies-button mt-2 inline-flex h-9 items-center justify-center rounded-full border px-3 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-4"
               aria-expanded={showAllReplies}
             >
               {showAllReplies
@@ -401,7 +491,7 @@ function CommentCard({
   );
 }
 
-export default function CommentThread({ dealId, comments }: CommentThreadProps) {
+export default function CommentThread({ dealId, comments, readOnly = false, currentUserName = null }: CommentThreadProps) {
   const router = useRouter();
   const [deletedCommentIds, setDeletedCommentIds] = useState<Set<string>>(() => new Set());
   const visibleComments = useMemo(
@@ -426,7 +516,7 @@ export default function CommentThread({ dealId, comments }: CommentThreadProps) 
     <>
       <div className="mt-5">
         {tree.length > 0 ? (
-          <div className="divide-y divide-slate-200">
+          <div className="space-y-1">
             {tree.map((comment) => (
               <CommentCard
                 key={comment.id}
@@ -434,21 +524,41 @@ export default function CommentThread({ dealId, comments }: CommentThreadProps) 
                 dealId={dealId}
                 depth={0}
                 onDeleted={removeCommentTree}
+                readOnly={readOnly}
+                currentUserName={currentUserName}
               />
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-sm leading-6 text-slate-600">
-              No comments yet. Ask about vouchers, expiry, stock, or cheaper finds.
+          <div className="comment-empty-state p-4">
+            <p className="comment-empty-text text-sm leading-6">
+              {readOnly ? "No comments were posted before this deal expired." : "No comments yet. Ask about vouchers, expiry, stock, or cheaper finds."}
             </p>
           </div>
         )}
       </div>
 
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-        <CommentForm dealId={dealId} buttonLabel="Post comment" />
-      </div>
+      {readOnly ? (
+        <p className="theme-alert theme-alert-info mt-6 px-4 py-3 text-sm font-semibold">
+          This deal has expired, so new comments and replies are closed.
+        </p>
+      ) : (
+        currentUserName ? (
+          <div className="mt-6">
+            <CommentForm dealId={dealId} buttonLabel="Post comment" onPosted={() => router.refresh()} />
+          </div>
+        ) : (
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <p className="comment-time text-sm font-medium">Log in to join the discussion.</p>
+            <a
+              href={`/auth?mode=login&next=/deal/${dealId}#comments`}
+              className="comment-submit-button inline-flex h-10 items-center justify-center rounded-full px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4"
+            >
+              Log in to comment
+            </a>
+          </div>
+        )
+      )}
     </>
   );
 }

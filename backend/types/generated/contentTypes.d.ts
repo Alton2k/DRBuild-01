@@ -442,6 +442,7 @@ export interface ApiCommentComment extends Struct.CollectionTypeSchema {
   };
   attributes: {
     authorName: Schema.Attribute.String & Schema.Attribute.Required;
+    authorUserId: Schema.Attribute.String;
     authorViewerId: Schema.Attribute.String;
     body: Schema.Attribute.Text & Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
@@ -513,6 +514,7 @@ export interface ApiDealReportDealReport extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     deal: Schema.Attribute.Relation<'manyToOne', 'api::deal.deal'>;
+    dealDocumentId: Schema.Attribute.String & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -543,6 +545,7 @@ export interface ApiDealVoteDealVote extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     deal: Schema.Attribute.Relation<'manyToOne', 'api::deal.deal'>;
+    dealDocumentId: Schema.Attribute.String & Schema.Attribute.Required;
     direction: Schema.Attribute.Enumeration<['up', 'down']> &
       Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
@@ -574,6 +577,7 @@ export interface ApiDealDeal extends Struct.CollectionTypeSchema {
     authorName: Schema.Attribute.String;
     authorUserId: Schema.Attribute.String;
     category: Schema.Attribute.String & Schema.Attribute.Required;
+    commentCount: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     comments: Schema.Attribute.Relation<'oneToMany', 'api::comment.comment'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -582,6 +586,8 @@ export interface ApiDealDeal extends Struct.CollectionTypeSchema {
     duplicateOfDealId: Schema.Attribute.String;
     duplicateReason: Schema.Attribute.Text;
     expiredAt: Schema.Attribute.DateTime;
+    hasFreeShipping: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
     imageGalleryUrls: Schema.Attribute.JSON;
     imageUrl: Schema.Attribute.Text;
     isExpired: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
@@ -602,7 +608,12 @@ export interface ApiDealDeal extends Struct.CollectionTypeSchema {
       'oneToMany',
       'api::deal-report.deal-report'
     >;
+    savedDeals: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::saved-deal.saved-deal'
+    >;
     score: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    shippingCost: Schema.Attribute.Decimal;
     store: Schema.Attribute.String & Schema.Attribute.Required;
     subCategory: Schema.Attribute.String;
     title: Schema.Attribute.String & Schema.Attribute.Required;
@@ -612,6 +623,107 @@ export interface ApiDealDeal extends Struct.CollectionTypeSchema {
     uploadedImageUrl: Schema.Attribute.Text;
     url: Schema.Attribute.Text & Schema.Attribute.Required;
     votes: Schema.Attribute.Relation<'oneToMany', 'api::deal-vote.deal-vote'>;
+  };
+}
+
+export interface ApiFollowFollow extends Struct.CollectionTypeSchema {
+  collectionName: 'follows';
+  info: {
+    displayName: 'Follow';
+    pluralName: 'follows';
+    singularName: 'follow';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    followerUserId: Schema.Attribute.String & Schema.Attribute.Required;
+    followingUserId: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::follow.follow'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiSavedDealSavedDeal extends Struct.CollectionTypeSchema {
+  collectionName: 'saved_deals';
+  info: {
+    displayName: 'Saved Deal';
+    pluralName: 'saved-deals';
+    singularName: 'saved-deal';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    deal: Schema.Attribute.Relation<'manyToOne', 'api::deal.deal'>;
+    dealDocumentId: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::saved-deal.saved-deal'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    userId: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
+export interface ApiUserSettingUserSetting extends Struct.CollectionTypeSchema {
+  collectionName: 'user_settings';
+  info: {
+    displayName: 'User Setting';
+    pluralName: 'user-settings';
+    singularName: 'user-setting';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::user-setting.user-setting'
+    > &
+      Schema.Attribute.Private;
+    notificationSettings: Schema.Attribute.JSON;
+    privacySettings: Schema.Attribute.JSON;
+    profileAvatarUrl: Schema.Attribute.Text;
+    profileBio: Schema.Attribute.Text;
+    profileUserName: Schema.Attribute.String &
+      Schema.Attribute.Unique &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 80;
+        minLength: 5;
+      }>;
+    publishedAt: Schema.Attribute.DateTime;
+    theme: Schema.Attribute.Enumeration<['dark', 'light', 'system']> &
+      Schema.Attribute.DefaultTo<'system'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    userId: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
   };
 }
 
@@ -1131,6 +1243,9 @@ declare module '@strapi/strapi' {
       'api::deal-report.deal-report': ApiDealReportDealReport;
       'api::deal-vote.deal-vote': ApiDealVoteDealVote;
       'api::deal.deal': ApiDealDeal;
+      'api::follow.follow': ApiFollowFollow;
+      'api::saved-deal.saved-deal': ApiSavedDealSavedDeal;
+      'api::user-setting.user-setting': ApiUserSettingUserSetting;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

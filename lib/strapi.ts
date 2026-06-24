@@ -7,6 +7,16 @@ type StrapiRequestOptions = {
   requireToken?: boolean;
 };
 
+export class StrapiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
+    super(message);
+    this.name = "StrapiRequestError";
+  }
+}
+
 export type StrapiEntity<T> = T & {
   id: number;
   documentId?: string;
@@ -18,7 +28,14 @@ export type StrapiEntity<T> = T & {
 
 export type StrapiListResponse<T> = {
   data: Array<StrapiEntity<T>>;
-  meta?: unknown;
+  meta?: {
+    pagination?: {
+      page: number;
+      pageSize: number;
+      pageCount: number;
+      total: number;
+    };
+  };
 };
 
 export type StrapiSingleResponse<T> = {
@@ -82,7 +99,7 @@ export async function strapiRequest<T>(path: string, options: StrapiRequestOptio
         ? errorBody.error.message
         : `Strapi request failed with ${response.status}`;
 
-    throw new Error(message);
+    throw new StrapiRequestError(message, response.status);
   }
 
   if (response.status === 204) {

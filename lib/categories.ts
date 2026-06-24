@@ -13,6 +13,7 @@ export const dealCategories: DealCategory[] = [
       "Home Accessories",
       "Home Appliances",
       "Stationery & Office Supplies",
+      "Others",
     ],
   },
   {
@@ -27,35 +28,36 @@ export const dealCategories: DealCategory[] = [
       "Electronic Accessories",
       "TV & Video",
       "Computers & Tablets",
+      "Others",
     ],
   },
   {
     name: "Family & Kids",
-    subcategories: ["Toys", "Childcare", "School Supplies", "Maternity & Pregnancy"],
+    subcategories: ["Toys", "Childcare", "School Supplies", "Maternity & Pregnancy", "Others"],
   },
   {
     name: "Fashion & Accessories",
-    subcategories: ["Shoes", "Clothes", "Activewear", "Fashion Accessories"],
+    subcategories: ["Shoes", "Clothes", "Activewear", "Fashion Accessories", "Others"],
   },
   {
     name: "D.I.Y",
-    subcategories: [],
+    subcategories: ["Others"],
   },
   {
     name: "Garden",
-    subcategories: ["Garden", "Garden Furniture", "Tools"],
+    subcategories: ["Garden", "Garden Furniture", "Tools", "Others"],
   },
   {
     name: "Travel",
-    subcategories: ["Days Out", "Flights", "Hotel", "Trains & Buses"],
+    subcategories: ["Days Out", "Flights", "Hotel", "Trains & Buses", "Others"],
   },
   {
     name: "Culture & Leisure",
-    subcategories: ["4K Blu-ray", "Blu-ray", "Cinema", "Music", "Vinyl"],
+    subcategories: ["4K Blu-ray", "Blu-ray", "Cinema", "Music", "Vinyl", "Others"],
   },
   {
     name: "Groceries",
-    subcategories: [],
+    subcategories: ["Others"],
   },
   {
     name: "Services & Contracts",
@@ -64,6 +66,7 @@ export const dealCategories: DealCategory[] = [
       "Streaming",
       "Takeaway and Food Delivery",
       "Video Streaming",
+      "Others",
     ],
   },
   {
@@ -74,23 +77,24 @@ export const dealCategories: DealCategory[] = [
       "Makeup",
       "Men's Fragrance",
       "Perfume",
+      "Others",
     ],
   },
   {
     name: "Sports & Outdoors",
-    subcategories: ["Bike", "Fitness & Running", "Protein", "Sports Nutrition", "Tent"],
+    subcategories: ["Bike", "Fitness & Running", "Protein", "Sports Nutrition", "Tent", "Others"],
   },
   {
     name: "Gaming",
-    subcategories: ["Console", "Accessories"],
+    subcategories: ["Console", "Accessories", "Others"],
   },
   {
     name: "Car & Motorcycle",
-    subcategories: ["Car Accessories", "Car Parts", "Garage & Service", "Tyres", "Vehicles"],
+    subcategories: ["Car Accessories", "Car Parts", "Garage & Service", "Tyres", "Vehicles", "Others"],
   },
   {
     name: "Finance & Insurance",
-    subcategories: [],
+    subcategories: ["Others"],
   },
   {
     name: "Freebies",
@@ -102,7 +106,12 @@ export const dealCategories: DealCategory[] = [
       "Free Online Courses",
       "Free Trials and Subscriptions",
       "Free Video Games",
+      "Others",
     ],
+  },
+  {
+    name: "Others",
+    subcategories: ["Others"],
   },
 ];
 

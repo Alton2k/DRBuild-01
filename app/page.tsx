@@ -1,24 +1,31 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import type { CSSProperties } from "react";
+import HomeDealCard from "./HomeDealCard";
+import HomeDealCheckMiniCard from "./HomeDealCheckMiniCard";
+import { siteDescription } from "@/lib/site";
 import {
-  getApprovedDeals,
+  getApprovedDealsPageResult,
+  getDealByIdResult,
   getDealVoteDirectionsByDealIds,
   type Deal,
   type DealFeedMode,
-  type DealVoteDirection,
+  type PaginatedDeals,
 } from "@/lib/deals";
-import { getCommentCountsByDealIds } from "@/lib/comments";
-import DealVoteButtons from "@/components/DealVoteButtons";
-import RunningTime from "@/components/RunningTime";
-import SaveDealButton from "@/components/SaveDealButton";
-import ShareDealButton from "@/components/ShareDealButton";
-import UserImage from "@/components/UserImage";
+import { getDealSavingsAmount } from "@/lib/dealDisplay";
+import { getApprovedDealCommentCountsInRangeResult } from "@/lib/comments";
+import { getCurrentUser } from "@/lib/auth";
+import { getSavedDealIdsForUser } from "@/lib/savedDeals";
+import { formatMyrPrice } from "@/lib/formatters";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Deal Rakyat - Malaysia Deal Marketplace",
-  description: "A clean deal-sharing homepage for Malaysia-focused community deals.",
+  description: siteDescription,
+  alternates: {
+    canonical: "/",
+  },
 };
 
 type HomeSearchParams = Promise<{
@@ -27,9 +34,111 @@ type HomeSearchParams = Promise<{
   subCategory?: string | string[];
   feed?: string | string[];
   period?: string | string[];
+  page?: string | string[];
 }>;
 
 type FeedPeriod = "day" | "week" | "month" | "all";
+
+type AmbientGradientStyle = CSSProperties & {
+  "--ambient-card-brand-stop": string;
+  "--ambient-card-accent-x": string;
+  "--ambient-card-accent-y": string;
+  "--ambient-card-accent-stop": string;
+  "--ambient-feed-brand-stop": string;
+  "--ambient-feed-accent-x": string;
+  "--ambient-feed-accent-y": string;
+  "--ambient-feed-accent-stop": string;
+};
+
+function getRandomPercent(min: number, max: number) {
+  return `${Math.round(min + Math.random() * (max - min))}%`;
+}
+
+function createAmbientGradientStyle(): AmbientGradientStyle {
+  return {
+    "--ambient-card-brand-stop": getRandomPercent(38, 50),
+    "--ambient-card-accent-x": getRandomPercent(0, 14),
+    "--ambient-card-accent-y": getRandomPercent(84, 100),
+    "--ambient-card-accent-stop": getRandomPercent(58, 70),
+    "--ambient-feed-brand-stop": getRandomPercent(34, 44),
+    "--ambient-feed-accent-x": getRandomPercent(4, 18),
+    "--ambient-feed-accent-y": getRandomPercent(0, 12),
+    "--ambient-feed-accent-stop": getRandomPercent(24, 34),
+  };
+}
+
+const singaporeUtcOffsetMs = 8 * 60 * 60 * 1000;
+const oneDayMs = 24 * 60 * 60 * 1000;
+
+type RankingDefinition = {
+  label: string;
+  metric: string;
+  period: string;
+  description: string;
+  dataSource: string;
+  calculation: string;
+};
+
+// Homepage ranking labels must stay in sync with these definitions.
+// All calendar periods are evaluated in Singapore time (Asia/Singapore).
+const RANKING_DEFINITIONS = {
+  topDealToday: {
+    label: "Top Deal Today",
+    metric: "score",
+    period: "Singapore calendar day",
+    description: "",
+    dataSource: "Approved, unexpired deals",
+    calculation: "Sort today's approved deals by score descending and use the first deal.",
+  },
+  topDealThisWeek: {
+    label: "Top Deal This Week",
+    metric: "score",
+    period: "Singapore calendar week, Monday to Sunday",
+    description: "",
+    dataSource: "Approved, unexpired deals",
+    calculation: "Sort this week's approved deals by score descending and use the first deal.",
+  },
+  biggestPriceDropToday: {
+    label: "Biggest Price Drop Today",
+    metric: "originalPrice - price",
+    period: "Singapore calendar day",
+    description: "",
+    dataSource: "Approved, unexpired deals with a higher original price",
+    calculation: "Compare absolute savings in RM and use the deal with the largest reduction.",
+  },
+  mostDiscussedToday: {
+    label: "Most Discussed Today",
+    metric: "comment count",
+    period: "Singapore calendar day",
+    description: "",
+    dataSource: "Comments on approved, unexpired deals",
+    calculation: "Count today's comments per approved deal and use the highest count.",
+  },
+  feedTopScore: {
+    label: "Top Score",
+    metric: "score",
+    period: "Selected period",
+    description: "Highest community score",
+    dataSource: "Approved, unexpired deals",
+    calculation: "Sort selected-period approved deals by score descending.",
+  },
+  feedMostComments: {
+    label: "Most Comments",
+    metric: "comment count",
+    period: "Selected deal-posted period",
+    description: "Highest comment count",
+    dataSource: "Approved, unexpired deals and stored comment totals",
+    calculation: "Filter deals by selected posted period, then sort by total comment count descending.",
+  },
+  feedNewest: {
+    label: "Newest",
+    metric: "createdAt",
+    period: "All time",
+    description: "Latest approved deals",
+    dataSource: "Approved, unexpired deals",
+    calculation: "Sort approved deals by creation time descending.",
+  },
+} satisfies Record<string, RankingDefinition>;
 
 const feedModes: {
   value: DealFeedMode;
@@ -39,30 +148,89 @@ const feedModes: {
 }[] = [
   {
     value: "hot",
-    label: "Trending",
-    description: "Sorted by Popularity",
-    heading: "Trending Deals",
+    label: RANKING_DEFINITIONS.feedTopScore.label,
+    description: RANKING_DEFINITIONS.feedTopScore.description,
+    heading: "Deals by Community Score",
   },
   {
     value: "discussed",
-    label: "Discussed",
-    description: "Active Chatter",
-    heading: "Most Discussed Deals",
+    label: RANKING_DEFINITIONS.feedMostComments.label,
+    description: RANKING_DEFINITIONS.feedMostComments.description,
+    heading: "Deals by Comment Count",
   },
   {
     value: "new",
-    label: "All",
-    description: "All Community Deals",
-    heading: "All Deals",
+    label: RANKING_DEFINITIONS.feedNewest.label,
+    description: RANKING_DEFINITIONS.feedNewest.description,
+    heading: "Newest Approved Deals",
   },
 ];
 
 const feedPeriods: { value: FeedPeriod; label: string }[] = [
   { value: "all", label: "All Time" },
-  { value: "day", label: "Daily" },
-  { value: "week", label: "Weekly" },
-  { value: "month", label: "Monthly" },
+  { value: "day", label: "Today" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
 ];
+
+function renderFeedModeIcon(mode: DealFeedMode) {
+  if (mode === "hot") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="community-feed-icon-comments h-4 w-4 shrink-0"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.4"
+      >
+        <path d="M8 21h8" />
+        <path d="M12 17v4" />
+        <path d="M7 4h10v4a5 5 0 0 1-10 0V4Z" />
+        <path d="M5 6H3v1a4 4 0 0 0 4 4" />
+        <path d="M19 6h2v1a4 4 0 0 1-4 4" />
+      </svg>
+    );
+  }
+
+  if (mode === "discussed") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-4 w-4 shrink-0"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.4"
+      >
+        <path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.6-4.7A8 8 0 1 1 21 12Z" />
+        <path d="M8 12h.01" />
+        <path d="M12 12h.01" />
+        <path d="M16 12h.01" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.4"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
 
 function getSingleSearchParam(value: string | string[] | undefined) {
   const resolvedValue = Array.isArray(value) ? value[0] : value;
@@ -79,15 +247,77 @@ function getFeedPeriod(value: string | string[] | undefined): FeedPeriod {
   return feedPeriods.some((mode) => mode.value === period) ? (period as FeedPeriod) : "all";
 }
 
-function getCreatedAfter(period: FeedPeriod) {
-  if (period === "all") {
-    return undefined;
+function getPageNumber(value: string | string[] | undefined) {
+  const page = Number.parseInt(getSingleSearchParam(value), 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function getSingaporeDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const partMap = new Map(parts.map((part) => [part.type, part.value]));
+
+  return {
+    year: Number(partMap.get("year")),
+    month: Number(partMap.get("month")),
+    day: Number(partMap.get("day")),
+  };
+}
+
+function getDateRangeFromSingaporeLocalMidnight(localMidnightUtcMs: number) {
+  return {
+    start: new Date(localMidnightUtcMs - singaporeUtcOffsetMs).toISOString(),
+    end: new Date(localMidnightUtcMs + oneDayMs - singaporeUtcOffsetMs).toISOString(),
+  };
+}
+
+function getTodayRange(date = new Date()) {
+  const { year, month, day } = getSingaporeDateParts(date);
+  return getDateRangeFromSingaporeLocalMidnight(Date.UTC(year, month - 1, day));
+}
+
+function getThisWeekRange(date = new Date()) {
+  const { year, month, day } = getSingaporeDateParts(date);
+  const localMidnightUtcMs = Date.UTC(year, month - 1, day);
+  const dayOfWeek = new Date(localMidnightUtcMs).getUTCDay();
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const weekStartLocalMidnightUtcMs = localMidnightUtcMs - daysSinceMonday * oneDayMs;
+
+  return {
+    start: new Date(weekStartLocalMidnightUtcMs - singaporeUtcOffsetMs).toISOString(),
+    end: new Date(weekStartLocalMidnightUtcMs + 7 * oneDayMs - singaporeUtcOffsetMs).toISOString(),
+  };
+}
+
+function getThisMonthRange(date = new Date()) {
+  const { year, month } = getSingaporeDateParts(date);
+  const monthStartLocalMidnightUtcMs = Date.UTC(year, month - 1, 1);
+  const nextMonthStartLocalMidnightUtcMs = Date.UTC(year, month, 1);
+
+  return {
+    start: new Date(monthStartLocalMidnightUtcMs - singaporeUtcOffsetMs).toISOString(),
+    end: new Date(nextMonthStartLocalMidnightUtcMs - singaporeUtcOffsetMs).toISOString(),
+  };
+}
+
+function getFeedPeriodRange(period: FeedPeriod): { start?: string; end?: string } {
+  if (period === "day") {
+    return getTodayRange();
   }
 
-  const createdAfter = new Date();
-  const days = period === "day" ? 1 : period === "week" ? 7 : 30;
-  createdAfter.setDate(createdAfter.getDate() - days);
-  return createdAfter.toISOString();
+  if (period === "week") {
+    return getThisWeekRange();
+  }
+
+  if (period === "month") {
+    return getThisMonthRange();
+  }
+
+  return {};
 }
 
 function createHomeHref(filters: {
@@ -96,6 +326,7 @@ function createHomeHref(filters: {
   subCategory?: string;
   feed?: DealFeedMode;
   period?: FeedPeriod;
+  page?: number;
 }) {
   const params = new URLSearchParams();
 
@@ -119,184 +350,64 @@ function createHomeHref(filters: {
     params.set("period", filters.period);
   }
 
+  if (filters.page && filters.page > 1) {
+    params.set("page", String(filters.page));
+  }
+
   const queryString = params.toString();
   return queryString ? `/?${queryString}` : "/";
 }
 
-function formatPrice(value: number) {
-  return new Intl.NumberFormat("en-MY", {
-    style: "currency",
-    currency: "MYR",
-    maximumFractionDigits: 2,
-  }).format(value);
+function getBiggestSavingsDeal(deals: Deal[]) {
+  return deals.reduce<Deal | null>((best, deal) => {
+    const savingsAmount = getDealSavingsAmount(deal) ?? 0;
+    const bestSavingsAmount = best ? getDealSavingsAmount(best) ?? 0 : 0;
+    return savingsAmount > bestSavingsAmount ? deal : best;
+  }, null);
 }
 
-function getDiscountPercent(deal: Deal) {
-  if (!deal.originalPrice || deal.originalPrice <= deal.price) {
-    return null;
-  }
-
-  return Math.round(((deal.originalPrice - deal.price) / deal.originalPrice) * 100);
+function getUnavailableDealsPage(page: number, pageSize: number): PaginatedDeals {
+  return {
+    deals: [],
+    pagination: {
+      page,
+      pageSize,
+      pageCount: 1,
+      total: 0,
+    },
+  };
 }
 
-function getSavingsAmount(deal: Deal) {
-  if (!deal.originalPrice || deal.originalPrice <= deal.price) {
-    return null;
+async function getMostDiscussedDealByCommentsInRange(range: { start: string; end: string }) {
+  const commentCountsResult = await getApprovedDealCommentCountsInRangeResult({
+    createdAfter: range.start,
+    createdBefore: range.end,
+  });
+
+  if (!commentCountsResult.ok) {
+    return { ok: false as const, deal: null, commentCount: 0 };
   }
 
-  return deal.originalPrice - deal.price;
+  const topCommentCount = commentCountsResult.data[0];
+
+  if (!topCommentCount) {
+    return { ok: true as const, deal: null, commentCount: 0 };
+  }
+
+  const dealResult = await getDealByIdResult(topCommentCount.dealId);
+
+  if (!dealResult.ok) {
+    return { ok: false as const, deal: null, commentCount: 0 };
+  }
+
+  return {
+    ok: true as const,
+    deal: dealResult.data,
+    commentCount: dealResult.data ? topCommentCount.count : 0,
+  };
 }
 
 const dealViewerCookieName = "dealmy_deal_viewer_id";
-
-function CommentIcon({ className = "h-4 w-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={strokeWidth}
-    >
-      <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z" />
-    </svg>
-  );
-}
-
-function DealCard({
-  deal,
-  commentCount,
-  initialVote,
-}: {
-  deal: Deal;
-  commentCount: number;
-  initialVote: DealVoteDirection | null;
-}) {
-  const discountPercent = getDiscountPercent(deal);
-  const savingsAmount = getSavingsAmount(deal);
-  const categoryLabel = deal.subCategory
-    ? `${deal.category} / ${deal.subCategory}`
-    : deal.category;
-  const thumbnailUrl = deal.imageGalleryUrls[0] || deal.imageUrl || deal.uploadedImageUrl;
-  const dealHref = `/deal/${deal.id}`;
-
-  return (
-    <article
-      className={`home-deal-card overflow-hidden rounded-3xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        deal.isExpired ? "home-deal-card-expired opacity-85" : ""
-      }`}
-    >
-      <div className="grid gap-0 md:grid-cols-[210px_minmax(0,1fr)]">
-        <Link
-          href={dealHref}
-          className="home-deal-card-media flex aspect-[16/10] items-center justify-center border-b md:aspect-auto md:min-h-full md:border-b-0 md:border-r"
-          aria-label={`View ${deal.title}`}
-        >
-          {thumbnailUrl ? (
-            <UserImage
-              src={thumbnailUrl}
-              alt=""
-              className={`h-full w-full object-contain p-4 transition duration-200 hover:scale-[1.02] ${deal.isExpired ? "grayscale" : ""}`}
-            />
-          ) : (
-            <span className="px-4 text-center text-sm font-medium text-slate-400">
-              No image submitted
-            </span>
-          )}
-        </Link>
-
-        <div className="flex min-w-0 flex-col p-4 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                {deal.isExpired ? (
-                  <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
-                    Expired
-                  </span>
-                ) : null}
-                {discountPercent ? (
-                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                    {discountPercent}% off
-                  </span>
-                ) : null}
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                  <RunningTime timestamp={deal.createdAt} />
-                </span>
-              </div>
-
-              <Link
-                href={dealHref}
-                className="line-clamp-2 text-lg font-semibold leading-6 text-slate-950 transition hover:text-slate-700 sm:text-xl"
-              >
-                {deal.title}
-              </Link>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
-                  {deal.store}
-                </span>
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
-                  {categoryLabel}
-                </span>
-              </div>
-            </div>
-
-            <div className="shrink-0 lg:text-right">
-              <div className="flex flex-wrap items-end gap-2 lg:justify-end">
-                <p className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-                  {formatPrice(deal.price)}
-                </p>
-                {deal.originalPrice ? (
-                  <p className="pb-1 text-sm text-slate-500 line-through">
-                    {formatPrice(deal.originalPrice)}
-                  </p>
-                ) : null}
-              </div>
-              {savingsAmount ? (
-                <p className="mt-1 text-sm font-semibold text-emerald-700">
-                  Save {formatPrice(savingsAmount)}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          <p className="mt-4 line-clamp-2 text-sm leading-6 text-slate-600">
-            {deal.description}
-          </p>
-
-          <div className="home-deal-card-actions mt-5 flex flex-col gap-3 border-t pt-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-              <DealVoteButtons dealId={deal.id} initialScore={deal.score} initialVote={initialVote} />
-              <Link
-                href={`${dealHref}#comments`}
-                aria-label={`${commentCount} ${commentCount === 1 ? "comment" : "comments"}`}
-                className="inline-flex h-12 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-[#e0115f]/40 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
-              >
-                <CommentIcon />
-                <span>{commentCount}</span>
-              </Link>
-              <SaveDealButton dealId={deal.id} />
-              <ShareDealButton
-                title={deal.title}
-                href={dealHref}
-                text={`Check out this deal on Deal Rakyat: ${deal.title}`}
-              />
-            </div>
-            <Link
-              href={dealHref}
-              className="inline-flex h-12 min-w-[128px] items-center justify-center rounded-full bg-[#e0115f] px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#c90f55] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/20"
-            >
-              View Deal
-            </Link>
-          </div>
-        </div>
-      </div>
-    </article>
-  );
-}
 
 /**
  * Renders the public homepage with approved deals from the local deal store.
@@ -308,7 +419,11 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
   const subCategory = getSingleSearchParam(params.subCategory);
   const feed = getFeedMode(params.feed);
   const period = feed === "new" ? "all" : getFeedPeriod(params.period);
-  const createdAfter = feed === "new" ? undefined : getCreatedAfter(period);
+  const page = getPageNumber(params.page);
+  const pageSize = 12;
+  const periodRange: { start?: string; end?: string } = feed === "new" ? {} : getFeedPeriodRange(period);
+  const todayRange = getTodayRange();
+  const thisWeekRange = getThisWeekRange();
   const selectedFeedMode = feedModes.find((mode) => mode.value === feed) ?? feedModes[0];
   const activeFilters = [
     q ? { label: `Search: ${q}` } : null,
@@ -316,53 +431,98 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
     subCategory ? { label: `Subcategory: ${subCategory}` } : null,
   ].filter((filter): filter is { label: string } => Boolean(filter));
   const hasActiveFilters = activeFilters.length > 0;
-  const deals = await getApprovedDeals({ q, category, subCategory, feed, createdAfter });
-  const allDeals = await getApprovedDeals();
-  const viewerId = (await cookies()).get(dealViewerCookieName)?.value;
-  const viewerVotes = await getDealVoteDirectionsByDealIds(
-    deals.map((deal) => deal.id),
+  const userPromise = getCurrentUser();
+  const dealPagePromise = getApprovedDealsPageResult({
+    q,
+    category,
+    subCategory,
+    feed,
+    createdAfter: periodRange.start,
+    createdBefore: periodRange.end,
+    page,
+    pageSize,
+  });
+  const topDealTodayPromise = getApprovedDealsPageResult({
+    feed: "hot",
+    createdAfter: todayRange.start,
+    createdBefore: todayRange.end,
+    page: 1,
+    pageSize: 1,
+  });
+  const topDealThisWeekPromise = getApprovedDealsPageResult({
+    feed: "hot",
+    createdAfter: thisWeekRange.start,
+    createdBefore: thisWeekRange.end,
+    page: 1,
+    pageSize: 1,
+  });
+  const todayDropDealsPromise = getApprovedDealsPageResult({
+    feed: "new",
+    createdAfter: todayRange.start,
+    createdBefore: todayRange.end,
+    page: 1,
+    pageSize: 100,
+  });
+  const mostDiscussedTodayDealPromise = getMostDiscussedDealByCommentsInRange(todayRange);
+  const viewerIdPromise = cookies().then((cookieStore) => cookieStore.get(dealViewerCookieName)?.value);
+  const [
+    dealPageResult,
+    topDealTodayResult,
+    topDealThisWeekResult,
+    todayDropDealsResult,
+    mostDiscussedTodayDealResult,
     viewerId,
-  );
-  const commentCounts = await getCommentCountsByDealIds(deals.map((deal) => deal.id));
-  const visibleDeals =
-    feed === "discussed"
-      ? deals
-          .slice()
-          .sort((first, second) => (commentCounts.get(second.id) ?? 0) - (commentCounts.get(first.id) ?? 0))
-      : deals;
-  const allDealCommentCounts = await getCommentCountsByDealIds(allDeals.map((deal) => deal.id));
-  const bestDeal = allDeals[0] ?? null;
-  const biggestDropDeal = allDeals.reduce<Deal | null>((best, deal) => {
-    const discountPercent = getDiscountPercent(deal) ?? 0;
-    const bestDiscountPercent = best ? getDiscountPercent(best) ?? 0 : 0;
-    return discountPercent > bestDiscountPercent ? deal : best;
-  }, null);
-  const mostDiscussedDeal = allDeals.reduce<Deal | null>((best, deal) => {
-    const commentCount = allDealCommentCounts.get(deal.id) ?? 0;
-    const bestCommentCount = best ? allDealCommentCounts.get(best.id) ?? 0 : 0;
-    return commentCount > bestCommentCount ? deal : best;
-  }, null);
-  const biggestDropPercent = biggestDropDeal ? getDiscountPercent(biggestDropDeal) : null;
-  const mostDiscussedCount = mostDiscussedDeal ? allDealCommentCounts.get(mostDiscussedDeal.id) ?? 0 : 0;
+    user,
+  ] = await Promise.all([
+    dealPagePromise,
+    topDealTodayPromise,
+    topDealThisWeekPromise,
+    todayDropDealsPromise,
+    mostDiscussedTodayDealPromise,
+    viewerIdPromise,
+    userPromise,
+  ]);
+  const dealPageFailed = !dealPageResult.ok;
+  const { deals, pagination } = dealPageResult.ok ? dealPageResult.data : getUnavailableDealsPage(page, pageSize);
+  const { deals: topDealsToday } = topDealTodayResult.ok ? topDealTodayResult.data : getUnavailableDealsPage(1, 1);
+  const { deals: topDealsThisWeek } = topDealThisWeekResult.ok
+    ? topDealThisWeekResult.data
+    : getUnavailableDealsPage(1, 1);
+  const { deals: todayDropDeals } = todayDropDealsResult.ok ? todayDropDealsResult.data : getUnavailableDealsPage(1, 100);
+  const visibleDeals = deals;
+  const visibleDealIds = visibleDeals.map((deal) => deal.id);
+  const [viewerVotes, savedDealIds] = await Promise.all([
+    getDealVoteDirectionsByDealIds(visibleDealIds, viewerId),
+    user ? getSavedDealIdsForUser(user.id) : Promise.resolve(new Set<string>()),
+  ]);
+  const topDealToday = topDealsToday[0] ?? null;
+  const topDealThisWeek = topDealsThisWeek[0] ?? null;
+  const biggestDropDeal = getBiggestSavingsDeal(todayDropDeals);
+  const mostDiscussedDeal = mostDiscussedTodayDealResult.deal;
+  const biggestDropSavings = biggestDropDeal ? getDealSavingsAmount(biggestDropDeal) : null;
+  const mostDiscussedCount = mostDiscussedTodayDealResult.commentCount;
+  const hasPreviousPage = pagination.page > 1;
+  const hasNextPage = pagination.page < pagination.pageCount;
+  const ambientGradientStyle = createAmbientGradientStyle();
 
   return (
-    <div className="home-page min-h-screen text-slate-900">
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:grid lg:grid-cols-[1.6fr_0.9fr] lg:px-8">
-        <section className="py-6 sm:py-8 lg:col-span-2">
+    <div className="home-page flex flex-1 flex-col text-slate-900" style={ambientGradientStyle}>
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-6 lg:grid lg:grid-cols-[1.6fr_0.9fr] lg:px-8">
+        <section className="pb-6 pt-4 sm:pb-8 sm:pt-6 lg:col-span-2">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.62fr)] lg:items-center">
-            <div className="max-w-2xl">
-              <h1 className="max-w-2xl text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+            <div className="max-w-3xl lg:pl-4">
+              <h1 className="max-w-3xl text-5xl font-black leading-[1.08] tracking-tight text-slate-950 sm:text-6xl lg:text-7xl">
                 Need a better deal?
-                <span className="block">See the <span className="text-[#e0115f]">DR.</span></span>
+                <span className="block">See the <span className="text-[#dc115e]">DR.</span></span>
               </h1>
-              <p className="mt-5 max-w-xl text-base leading-8 text-slate-600 sm:text-lg">
-                Discover the Hottest Discount, Price Drops, Voucher and Hidden Gems shared by our Community 
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl sm:leading-9">
+                Discover discounts, price drops, vouchers, and hidden gems shared by the community.
               </p>
 
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href="#deals"
-                  className="hero-explore-button inline-flex h-12 items-center justify-center gap-3 rounded-full px-6 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e6f24f]/25"
+                  className="hero-explore-button inline-flex h-14 items-center justify-center gap-3 rounded-full px-7 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e6f24f]/25"
                 >
                   Explore Deals
                   <svg
@@ -381,7 +541,7 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                 </Link>
                 <Link
                   href="/post"
-                  className="inline-flex h-12 items-center justify-center gap-3 rounded-full bg-[#e0115f] px-6 text-sm font-bold text-white transition hover:bg-[#c90f55] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/25"
+                  className="inline-flex h-14 items-center justify-center gap-3 rounded-full bg-[#dc115e] px-7 text-sm font-bold text-white transition hover:bg-[#dc115e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/25"
                 >
                   Post a Deal
                   <svg
@@ -400,10 +560,10 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                 </Link>
               </div>
 
-              <div className="mt-10 grid gap-4 text-sm font-semibold text-slate-950 sm:grid-cols-3">
+              <div className="mt-11 grid gap-5 text-sm font-bold text-slate-950 sm:grid-cols-3">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center text-[#e6f24f]">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+                  <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
                       <path d="M16 21v-2a4 4 0 0 0-8 0v2" />
                       <circle cx="12" cy="7" r="4" />
                     </svg>
@@ -411,8 +571,8 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                   <span>Real People<br />Real Deals</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center text-[#e6f24f]">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+                  <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
                       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
                       <path d="m9 12 2 2 4-4" />
                     </svg>
@@ -420,8 +580,8 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                   <span>Community<br />Verified</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center text-[#e6f24f]">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+                  <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
                       <path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.82 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
                       <path d="M7 7h.01" />
                     </svg>
@@ -432,82 +592,50 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
             </div>
 
             <div className="deal-check-card rounded-3xl border p-5 shadow-sm">
-              <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
-                <span className="text-[#e0115f]">
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5">
+              <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-3 border-b border-slate-200 pb-3">
+                <span className="flex h-12 w-12 items-center justify-center text-[#dc115e]">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5">
                     <path d="M22 12h-4l-3 8-6-16-3 8H2" />
                   </svg>
                 </span>
-                <h2 className="text-lg font-bold uppercase tracking-[0.12em] text-slate-950">
+                <h2 className="deal-check-heading text-xl font-semibold uppercase tracking-[0.16em]">
                   Today&apos;s deal check
                 </h2>
               </div>
 
-              <div className="divide-y divide-slate-200">
-                <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-4 py-5">
-                  <span className="deal-check-icon deal-check-icon-yellow flex h-14 w-14 items-center justify-center rounded-full border">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5">
-                      <path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.82 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
-                      <path d="M7 7h.01" />
-                    </svg>
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-600">Best Deal Today</p>
-                    <p className="truncate text-lg font-bold text-slate-950">
-                      {bestDeal?.title ?? "No deal yet"}
-                    </p>
-                  </div>
-                  <p className="text-right text-lg font-bold text-slate-950">
-                    {bestDeal ? formatPrice(bestDeal.price) : "-"}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-4 py-5">
-                  <span className="deal-check-icon deal-check-icon-ruby flex h-14 w-14 items-center justify-center rounded-full border">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5">
-                      <path d="m3 7 6 6 4-4 8 8" />
-                      <path d="M21 10v7h-7" />
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-600">Biggest Drop</p>
-                    <p className="text-2xl font-bold text-slate-950">
-                      {biggestDropPercent ? `-${biggestDropPercent}%` : "-"}
-                    </p>
-                    <p className="text-sm text-slate-500">Price drop detected</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-4 py-5">
-                  <span className="deal-check-icon deal-check-icon-cyan flex h-14 w-14 items-center justify-center rounded-full border">
-                    <CommentIcon className="h-6 w-6 shrink-0" strokeWidth={2.5} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-600">Most Discussed</p>
-                    <p className="truncate text-lg font-bold text-slate-950">
-                      {mostDiscussedDeal?.title ?? "No discussion yet"}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {mostDiscussedCount} {mostDiscussedCount === 1 ? "comment" : "comments"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-4 py-5">
-                  <span className="deal-check-icon deal-check-icon-yellow flex h-14 w-14 items-center justify-center rounded-full border">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-                      <path d="m9 12 2 2 4-4" />
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-600">Community Approved</p>
-                    <p className="text-lg font-bold text-slate-950">
-                      {allDeals.length} {allDeals.length === 1 ? "deal" : "deals"}
-                    </p>
-                    <p className="text-sm text-slate-500">High quality picks</p>
-                  </div>
-                </div>
+              <div className="deal-check-mini-grid mt-4">
+                <HomeDealCheckMiniCard
+                  href={topDealToday ? `/deal/${topDealToday.id}` : undefined}
+                  ariaLabel={topDealToday ? `View top deal today: ${topDealToday.title}` : undefined}
+                  label={RANKING_DEFINITIONS.topDealToday.label}
+                  deal={topDealTodayResult.ok ? topDealToday : null}
+                  value={topDealTodayResult.ok && topDealToday ? formatMyrPrice(topDealToday.price) : "-"}
+                  fallbackTitle={topDealTodayResult.ok ? "No deals ranked today yet" : "Deals unavailable"}
+                />
+                <HomeDealCheckMiniCard
+                  href={topDealThisWeek ? `/deal/${topDealThisWeek.id}` : undefined}
+                  ariaLabel={topDealThisWeek ? `View top deal this week: ${topDealThisWeek.title}` : undefined}
+                  label={RANKING_DEFINITIONS.topDealThisWeek.label}
+                  deal={topDealThisWeekResult.ok ? topDealThisWeek : null}
+                  value={topDealThisWeekResult.ok && topDealThisWeek ? formatMyrPrice(topDealThisWeek.price) : "-"}
+                  fallbackTitle={topDealThisWeekResult.ok ? "No deals ranked this week yet" : "Deals unavailable"}
+                />
+                <HomeDealCheckMiniCard
+                  href={biggestDropDeal ? `/deal/${biggestDropDeal.id}` : undefined}
+                  ariaLabel={biggestDropDeal ? `View biggest price drop today: ${biggestDropDeal.title}` : undefined}
+                  label={RANKING_DEFINITIONS.biggestPriceDropToday.label}
+                  deal={todayDropDealsResult.ok ? biggestDropDeal : null}
+                  value={biggestDropSavings ? `Save ${formatMyrPrice(biggestDropSavings)}` : "-"}
+                  fallbackTitle={todayDropDealsResult.ok ? "No price drops ranked today yet" : "Deals unavailable"}
+                />
+                <HomeDealCheckMiniCard
+                  href={mostDiscussedDeal ? `/deal/${mostDiscussedDeal.id}#comments` : undefined}
+                  ariaLabel={mostDiscussedDeal ? `View most discussed deal today: ${mostDiscussedDeal.title}` : undefined}
+                  label={RANKING_DEFINITIONS.mostDiscussedToday.label}
+                  deal={mostDiscussedTodayDealResult.ok ? mostDiscussedDeal : null}
+                  value={`${mostDiscussedCount} ${mostDiscussedCount === 1 ? "comment" : "comments"}`}
+                  fallbackTitle={mostDiscussedTodayDealResult.ok ? "No discussions today yet" : "Comments unavailable"}
+                />
               </div>
             </div>
           </div>
@@ -515,14 +643,14 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
 
         <section id="deals" className="home-panel scroll-mt-28 lg:col-span-2">
           <div className="flex flex-col gap-5">
-            <div className="community-feed-controls rounded-3xl border p-3 sm:p-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <h2 className="community-feed-title truncate text-2xl font-bold tracking-tight sm:text-3xl">
+            <div className="community-feed-controls rounded-2xl border p-2.5 sm:p-3">
+              <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="min-w-0 lg:row-span-2 lg:self-center">
+                  <h2 className="community-feed-title truncate text-xl font-bold tracking-tight sm:text-2xl">
                     {selectedFeedMode.heading}
                   </h2>
                 </div>
-                <div className="grid shrink-0 gap-2 sm:grid-cols-3 lg:w-[520px]">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:w-[25rem] lg:justify-between">
                   {feedModes.map((mode) => {
                     const isSelected = mode.value === feed;
 
@@ -537,64 +665,76 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                           period: mode.value === "new" ? "all" : period,
                         })}
                         scroll={false}
+                        title={mode.label}
                         aria-current={isSelected ? "page" : undefined}
-                        className={`community-feed-tab group rounded-2xl px-3 py-3 text-center text-sm transition ${
-                          isSelected
-                            ? "community-feed-tab-active shadow-sm"
-                            : "community-feed-tab-idle"
-                        }`}
-                      >
-                        <span className="block text-sm font-bold">
-                          {mode.label}
-                        </span>
-                        <span
-                          className={`community-feed-tab-description mt-0.5 block text-[11px] ${
-                            isSelected
-                              ? "community-feed-tab-description-active"
-                              : "community-feed-tab-description-idle"
-                          }`}
-                        >
-                          {mode.description}
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {feed !== "new" ? (
-                <div className="community-feed-periods mt-4 flex flex-wrap items-center justify-end gap-2">
-                  {feedPeriods.map((mode) => {
-                    const isSelected = mode.value === period;
-
-                    return (
-                      <Link
-                        key={mode.value}
-                        href={createHomeHref({ q, category, subCategory, feed, period: mode.value })}
-                        scroll={false}
-                        aria-current={isSelected ? "page" : undefined}
-                        className={`community-feed-period rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        className={`community-feed-period inline-flex items-center justify-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold leading-none transition ${
                           isSelected
                             ? "community-feed-period-active"
                             : "community-feed-period-idle"
                         }`}
                       >
-                        {mode.label}
+                        {renderFeedModeIcon(mode.value)}
+                        <span>{mode.label}</span>
                       </Link>
                     );
                   })}
                 </div>
-              ) : null}
+
+                {feed !== "new" ? (
+                  <div className="community-feed-periods flex flex-wrap items-center justify-end gap-2 border-t pt-2.5 lg:col-start-2 lg:w-[25rem] lg:justify-between">
+                    {feedPeriods.map((mode) => {
+                      const isSelected = mode.value === period;
+
+                      return (
+                        <Link
+                          key={mode.value}
+                          href={createHomeHref({ q, category, subCategory, feed, period: mode.value })}
+                          scroll={false}
+                          title={
+                            mode.value === "all"
+                              ? "No posted-date filter."
+                              : `Uses the ${mode.label.toLowerCase()} Singapore calendar period.`
+                          }
+                          aria-current={isSelected ? "page" : undefined}
+                          className={`community-feed-period rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+                            isSelected
+                              ? "community-feed-period-active"
+                              : "community-feed-period-idle"
+                          }`}
+                        >
+                          {mode.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             {hasActiveFilters ? (
-              <div className="flex flex-col gap-3 rounded-3xl border border-[#e6f24f] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-700">Active filters</span>
+              <div className="active-filters-card flex w-full max-w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="active-filters-label inline-flex items-center gap-1.5 text-sm font-bold">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2.4"
+                    >
+                      <path d="M4 5h16" />
+                      <path d="M7 12h10" />
+                      <path d="M10 19h4" />
+                    </svg>
+                    Active filters
+                  </span>
                   {activeFilters.map((filter) => (
                     <span
                       key={filter.label}
-                      className="rounded-full border border-[#e0115f]/20 bg-[#e6f24f]/20 px-3 py-1 text-xs font-medium text-slate-700"
+                      className="active-filter-chip max-w-full truncate rounded-full border px-3 py-1 text-xs font-bold"
                     >
                       {filter.label}
                     </span>
@@ -603,72 +743,134 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                 <Link
                   href={createHomeHref({ feed, period })}
                   scroll={false}
-                  className="text-sm font-semibold text-slate-700 transition hover:text-slate-950"
+                  className="active-filters-clear inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold transition"
                 >
-                  Clear filters
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.4"
+                  >
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v5" />
+                    <path d="M14 11v5" />
+                  </svg>
+                  Clear all
                 </Link>
               </div>
             ) : null}
 
-            {visibleDeals.length > 0 ? (
-              <div className="grid gap-4">
+            {dealPageFailed ? (
+              <div className="home-status-panel px-6 py-14 text-center">
+                <div className="home-status-icon mx-auto mb-5 flex h-14 w-14 items-center justify-center">
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.4"
+                  >
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                    <path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Deals are temporarily unavailable
+                </h3>
+                <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-700">
+                  Please try again later.
+                </p>
+              </div>
+            ) : visibleDeals.length > 0 ? (
+              <div className="home-deal-grid grid gap-4">
                 {visibleDeals.map((deal) => (
-                  <DealCard
+                  <HomeDealCard
                     key={deal.id}
                     deal={deal}
-                    commentCount={commentCounts.get(deal.id) ?? 0}
+                    commentCount={deal.commentCount ?? 0}
                     initialVote={viewerVotes.get(deal.id) ?? null}
+                    initialSaved={savedDealIds.has(deal.id)}
+                    isSignedIn={Boolean(user)}
                   />
                 ))}
               </div>
             ) : (
-              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center">
-                <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-slate-500">
-                  0
-                </div>
-                <h3 className="text-xl font-semibold text-slate-950">
-                  {hasActiveFilters ? "No matching deals found" : "No approved deals yet"}
+              <div className="home-empty-state px-6 py-14 text-center">
+                <h3 className="text-xl font-semibold">
+                  {hasActiveFilters ? "Sorry, we couldn't find any posts" : "No approved deals yet"}
                 </h3>
-                <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
+                <p className="mx-auto mt-3 max-w-xl text-sm leading-6">
                   {hasActiveFilters
-                    ? "Try clearing filters or searching for a different store, category, or deal keyword."
+                    ? "Please try changing the filter options."
                     : "Submit the first real deal, then approve it from the admin page to publish it on the homepage."}
                 </p>
                 {hasActiveFilters ? (
-                  <Link
-                    href={createHomeHref({ feed, period })}
-                    scroll={false}
-                    className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-[#e0115f] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#c90f55]"
-                  >
-                    Clear filters
-                  </Link>
+                  null
                 ) : (
                   <Link
                     href="/post"
-                    className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-[#e0115f] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#c90f55]"
+                    className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-[#dc115e] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#dc115e]"
                   >
                     Post a Deal
                   </Link>
                 )}
               </div>
             )}
+
+            {pagination.pageCount > 1 ? (
+              <nav className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-semibold text-slate-600">
+                  Page {pagination.page} of {pagination.pageCount}
+                </p>
+                <div className="flex gap-2">
+                  {hasPreviousPage ? (
+                    <Link
+                      href={createHomeHref({ q, category, subCategory, feed, period, page: pagination.page - 1 })}
+                      scroll={false}
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-[#dc115e]/40 hover:text-slate-950"
+                    >
+                      Previous
+                    </Link>
+                  ) : null}
+                  {hasNextPage ? (
+                    <Link
+                      href={createHomeHref({ q, category, subCategory, feed, period, page: pagination.page + 1 })}
+                      scroll={false}
+                      className="inline-flex h-11 items-center justify-center rounded-full bg-[#dc115e] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#dc115e]"
+                    >
+                      Next
+                    </Link>
+                  ) : null}
+                </div>
+              </nav>
+            ) : null}
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-[#e6f24f] bg-white/90 px-4 py-6 text-sm text-slate-600 sm:px-6 lg:px-8">
+      <footer className="border-t border-slate-200 bg-white/90 px-4 py-6 text-sm text-slate-600 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p>Deal Rakyat</p>
           <div className="flex flex-wrap gap-4">
-            <a href="#" className="transition hover:text-slate-900">
+            <Link href="/about" className="transition hover:text-slate-900">
               About
-            </a>
-            <a href="#" className="transition hover:text-slate-900">
+            </Link>
+            <Link href="/terms" className="transition hover:text-slate-900">
               Terms
-            </a>
-            <a href="#" className="transition hover:text-slate-900">
+            </Link>
+            <Link href="/privacy" className="transition hover:text-slate-900">
               Privacy
-            </a>
+            </Link>
           </div>
         </div>
       </footer>

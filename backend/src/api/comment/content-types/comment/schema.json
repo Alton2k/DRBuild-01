@@ -23,6 +23,9 @@
     "authorViewerId": {
       "type": "string"
     },
+    "authorUserId": {
+      "type": "string"
+    },
     "authorName": {
       "type": "string",
       "required": true

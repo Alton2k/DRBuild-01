@@ -1,8 +1,18 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { signOutAction } from "@/app/auth/actions";
 import type { DealCategory } from "@/lib/categories";
 
@@ -25,6 +35,26 @@ const appearanceOptions: { value: ThemeMode; label: string }[] = [
     label: "Auto",
   },
 ];
+const secondaryCategoryNames = [
+  "Electronics",
+  "Fashion & Accessories",
+  "Groceries",
+  "Gaming",
+  "Home & Living",
+  "Travel",
+  "Health & Beauty",
+  "Sports & Outdoors",
+];
+const browseParamNames = ["q", "category", "subCategory", "feed", "period", "page"];
+const mobileMenuId = "mobile-site-menu";
+const focusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 function getResolvedTheme(mode: ThemeMode) {
   if (mode === "dark") {
@@ -69,27 +99,78 @@ function subscribeToThemeModeChanges(onStoreChange: () => void) {
  */
 export default function TopNavClient({
   categories,
+  initialThemeMode = "auto",
   userEmail,
 }: {
   categories: DealCategory[];
+  initialThemeMode?: ThemeMode;
   userEmail: string | null;
   userName: string | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeSearchQuery = searchParams.get("q")?.trim() ?? "";
+  const activeCategory = searchParams.get("category")?.trim() ?? "";
+  const activeSubCategory = searchParams.get("subCategory")?.trim() ?? "";
   const authNext = pathname === "/auth" ? "/" : pathname;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [isCategoryMegaMenuOpen, setIsCategoryMegaMenuOpen] = useState(false);
+  const [megaMenuCategoryName, setMegaMenuCategoryName] = useState("");
   const [openCategory, setOpenCategory] = useState("");
+  const [searchDraft, setSearchDraft] = useState({
+    sourceQuery: activeSearchQuery,
+    value: activeSearchQuery,
+  });
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+  const menuOpenButtonRef = useRef<HTMLButtonElement>(null);
+  const categoryMegaMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const categoryMegaMenuRef = useRef<HTMLDivElement>(null);
+  const mainMenuDialogRef = useRef<HTMLElement>(null);
+  const categoryMenuDialogRef = useRef<HTMLElement>(null);
+  const wasMenuOpenRef = useRef(false);
   const lastScrollYRef = useRef(0);
+  const searchValue = searchDraft.sourceQuery === activeSearchQuery ? searchDraft.value : activeSearchQuery;
   const themeMode = useSyncExternalStore<ThemeMode>(
     subscribeToThemeModeChanges,
     getStoredThemeMode,
-    () => "auto",
+    () => initialThemeMode,
   );
+  const closeMenu = useCallback(() => {
+    setIsMenuOpen(false);
+    setIsCategoryMenuOpen(false);
+    setIsCategoryMegaMenuOpen(false);
+    setOpenCategory("");
+  }, []);
+
+  const getActiveMenuDialog = useCallback(() => {
+    if (isCategoryMenuOpen) {
+      return categoryMenuDialogRef.current;
+    }
+
+    return mainMenuDialogRef.current;
+  }, [isCategoryMenuOpen]);
+
+  const getFocusableMenuElements = useCallback(() => {
+    const activeDialog = getActiveMenuDialog();
+
+    if (!activeDialog) {
+      return [];
+    }
+
+    return Array.from(activeDialog.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+      (element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true",
+    );
+  }, [getActiveMenuDialog]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    if (userEmail && getStoredThemeMode() !== initialThemeMode) {
+      localStorage.setItem(themeStorageKey, initialThemeMode);
+      window.dispatchEvent(new Event(themeModeChangedEventName));
+    }
 
     applyThemeMode(themeMode);
 
@@ -104,7 +185,7 @@ export default function TopNavClient({
     return () => {
       mediaQuery.removeEventListener("change", handleSystemThemeChange);
     };
-  }, [themeMode]);
+  }, [initialThemeMode, themeMode, userEmail]);
 
   useEffect(() => {
     if (isMenuOpen) {
@@ -147,6 +228,149 @@ export default function TopNavClient({
     };
   }, [isMenuOpen]);
 
+  useEffect(() => {
+    if (!isCategoryMegaMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (
+        categoryMegaMenuRef.current?.contains(target) ||
+        categoryMegaMenuButtonRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      setIsCategoryMegaMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsCategoryMegaMenuOpen(false);
+        categoryMegaMenuButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isCategoryMegaMenuOpen]);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      if (wasMenuOpenRef.current) {
+        menuOpenButtonRef.current?.focus();
+      }
+
+      wasMenuOpenRef.current = false;
+      return;
+    }
+
+    wasMenuOpenRef.current = true;
+
+    const originalOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    const handleDocumentFocusIn = (event: FocusEvent) => {
+      const activeDialog = getActiveMenuDialog();
+      const nextFocusedElement = event.target;
+
+      if (!(nextFocusedElement instanceof Node) || !activeDialog || activeDialog.contains(nextFocusedElement)) {
+        return;
+      }
+
+      const firstFocusableElement = getFocusableMenuElements()[0];
+
+      if (firstFocusableElement) {
+        firstFocusableElement.focus();
+      } else {
+        activeDialog.focus();
+      }
+    };
+
+    document.addEventListener("focusin", handleDocumentFocusIn);
+
+    return () => {
+      document.removeEventListener("focusin", handleDocumentFocusIn);
+    };
+  }, [getActiveMenuDialog, getFocusableMenuElements, isMenuOpen]);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const focusableElements = getFocusableMenuElements();
+      const firstFocusableElement = focusableElements[0];
+
+      if (firstFocusableElement) {
+        firstFocusableElement.focus();
+      } else {
+        getActiveMenuDialog()?.focus();
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [getActiveMenuDialog, getFocusableMenuElements, isCategoryMenuOpen, isMenuOpen]);
+
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenu();
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const focusableElements = getFocusableMenuElements();
+
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      getActiveMenuDialog()?.focus();
+      return;
+    }
+
+    const firstFocusableElement = focusableElements[0];
+    const lastFocusableElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstFocusableElement) {
+      event.preventDefault();
+      lastFocusableElement.focus();
+      return;
+    }
+
+    if (!event.shiftKey && document.activeElement === lastFocusableElement) {
+      event.preventDefault();
+      firstFocusableElement.focus();
+    }
+  };
+
   const handleLogoClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (pathname !== "/" || window.location.search) {
       return;
@@ -174,46 +398,107 @@ export default function TopNavClient({
   };
 
   const authHref = `/auth?next=${encodeURIComponent(authNext)}`;
-  const closeMenu = () => {
-    setIsMenuOpen(false);
-    setIsCategoryMenuOpen(false);
-    setOpenCategory("");
-  };
   const postIsActive = pathname === "/post";
   const profileIsActive = pathname === "/profile";
+  const settingsIsActive = pathname === "/settings";
+  const secondaryCategories = secondaryCategoryNames
+    .map((categoryName) => categories.find((category) => category.name === categoryName))
+    .filter((category): category is DealCategory => Boolean(category));
+  const megaMenuCategory =
+    categories.find((category) => category.name === megaMenuCategoryName) ??
+    categories.find((category) => category.name === activeCategory) ??
+    categories[0];
+  const createBrowseParams = () => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    Array.from(params.keys()).forEach((key) => {
+      if (!browseParamNames.includes(key)) {
+        params.delete(key);
+      }
+    });
+
+    params.delete("page");
+
+    return params;
+  };
+
+  const createBrowseHref = (params: URLSearchParams) => {
+    const queryString = params.toString();
+
+    return queryString ? `/?${queryString}#deals` : "/#deals";
+  };
+
   const createCategoryHref = (category: string, subCategory?: string) => {
-    const params = new URLSearchParams({ category });
+    const params = createBrowseParams();
+
+    params.set("category", category);
 
     if (subCategory) {
       params.set("subCategory", subCategory);
+    } else {
+      params.delete("subCategory");
     }
 
-    return `/?${params.toString()}#deals`;
+    return createBrowseHref(params);
+  };
+
+  const createAllCategoriesHref = () => {
+    const params = createBrowseParams();
+
+    params.delete("category");
+    params.delete("subCategory");
+
+    return createBrowseHref(params);
+  };
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const params = createBrowseParams();
+    const nextQuery = searchValue.trim();
+
+    if (nextQuery) {
+      params.set("q", nextQuery);
+    } else {
+      params.delete("q");
+    }
+
+    router.push(createBrowseHref(params));
+  };
+
+  const handleClearSearch = () => {
+    const params = createBrowseParams();
+
+    params.delete("q");
+    setSearchDraft({ sourceQuery: "", value: "" });
+    router.push(createBrowseHref(params));
   };
 
   return (
     <>
       <header
-        className={`sticky top-0 z-40 border-b border-[#cbd83d] bg-[#e6f24f] shadow-sm backdrop-blur-xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
+        className={`topbar-shell sticky top-0 z-40 bg-[#0f172a]/95 shadow-sm backdrop-blur-xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
           isHeaderHidden ? "-translate-y-full" : "translate-y-0"
         }`}
       >
-      <nav className="mx-auto grid max-w-7xl gap-3 px-4 py-3 sm:px-6 lg:grid-cols-[auto_minmax(240px,1fr)_auto] lg:items-center lg:px-8">
-        <div className="flex min-w-0 items-center gap-3">
+      <nav className="mx-auto grid max-w-7xl gap-3 px-4 py-2 sm:px-6 lg:grid-cols-[auto_minmax(240px,1fr)_auto] lg:items-center lg:px-8">
+        <div className="flex min-w-0 items-center gap-4">
           <button
             type="button"
             aria-label="Open menu"
             aria-expanded={isMenuOpen}
+            aria-controls={mobileMenuId}
+            ref={menuOpenButtonRef}
             onClick={() => {
               setIsHeaderHidden(false);
               setIsMenuOpen(true);
             }}
-            className="topbar-account-action inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition"
+            className="topbar-menu-trigger inline-flex h-9 w-9 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/20"
           >
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
-              className="h-5 w-5"
+              className="h-7 w-7"
               fill="none"
               stroke="currentColor"
               strokeLinecap="round"
@@ -228,19 +513,25 @@ export default function TopNavClient({
           <Link
             href="/"
             onClick={handleLogoClick}
-            className="inline-flex min-w-0 items-center gap-3 rounded-full pr-2 text-lg font-semibold text-slate-950 transition hover:text-slate-700"
+            aria-label="Deal Rakyat home"
+            className="inline-flex h-11 w-28 shrink-0 items-center justify-center overflow-hidden bg-transparent px-2 py-1 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 sm:h-12 sm:w-32"
           >
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-sm ring-2 ring-white/55">
-              D
-            </span>
+            <Image
+              src="/deal-rakyat-logo.svg"
+              alt=""
+              width={220}
+              height={100}
+              priority
+              unoptimized
+              className="h-full w-full scale-[1.2] object-contain"
+            />
           </Link>
         </div>
 
         <form
-          action="/"
-          method="get"
+          onSubmit={handleSearchSubmit}
           role="search"
-          className="mx-auto flex w-full max-w-md min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white/90 px-3 py-2 shadow-sm transition focus-within:border-[#e0115f]/45 focus-within:bg-white focus-within:ring-4 focus-within:ring-[#e0115f]/15"
+          className="mx-auto flex w-full max-w-md min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white/90 px-3 py-1.5 shadow-sm transition focus-within:border-[#dc115e]/45 focus-within:bg-white focus-within:ring-4 focus-within:ring-[#dc115e]/15"
         >
           <label className="sr-only" htmlFor="top-search-deals">
             Search deals
@@ -263,11 +554,41 @@ export default function TopNavClient({
             name="q"
             type="search"
             placeholder="Search deals"
+            value={searchValue}
+            onChange={(event) =>
+              setSearchDraft({
+                sourceQuery: activeSearchQuery,
+                value: event.target.value,
+              })
+            }
             className="min-w-0 flex-1 bg-transparent text-sm text-slate-950 outline-none placeholder:text-slate-400"
           />
+          {activeSearchQuery ? (
+            <button
+              type="button"
+              onClick={handleClearSearch}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+              aria-label="Clear search"
+              title="Clear search"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          ) : null}
           <button
             type="submit"
-            className="topbar-account-action inline-flex h-8 shrink-0 items-center justify-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/20 disabled:opacity-60"
+            className="topbar-account-action inline-flex h-8 shrink-0 items-center justify-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:opacity-60"
           >
             Search
           </button>
@@ -277,7 +598,7 @@ export default function TopNavClient({
           <Link
             href="/post"
             aria-current={postIsActive ? "page" : undefined}
-            className={`post-deal-cta inline-flex h-11 items-center justify-center gap-2 rounded-full border-[3px] px-4 text-sm font-bold transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/25 ${
+            className={`post-deal-cta inline-flex h-10 items-center justify-center gap-2 rounded-full border-[3px] px-4 text-sm font-bold transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/25 ${
               postIsActive
                 ? "is-active"
                 : ""
@@ -303,7 +624,7 @@ export default function TopNavClient({
               <Link
                 href="/profile"
                 aria-current={profileIsActive ? "page" : undefined}
-                className={`topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
+                className={`topbar-account-action inline-flex h-9 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
                   profileIsActive
                     ? "is-active"
                     : ""
@@ -315,7 +636,7 @@ export default function TopNavClient({
                 <button
                   type="submit"
                   title={userEmail}
-                  className="topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition"
+                  className="topbar-account-action inline-flex h-9 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition"
                 >
                   Log out
                 </button>
@@ -324,33 +645,166 @@ export default function TopNavClient({
           ) : (
             <Link
               href={authHref}
-              className="topbar-account-action inline-flex h-10 items-center justify-center rounded-full border px-4 text-sm font-semibold transition"
+              className="topbar-account-action inline-flex h-9 items-center justify-center rounded-full border px-4 text-sm font-semibold transition"
             >
               Log in / Register
             </Link>
           )}
         </div>
       </nav>
+      <div className="secondary-category-bar">
+        <div className="mx-auto max-w-7xl overflow-x-auto px-4 sm:px-6 lg:px-8">
+          <nav aria-label="Popular categories" className="flex min-w-max items-center justify-center gap-2 py-2">
+            <button
+              type="button"
+              ref={categoryMegaMenuButtonRef}
+              onClick={() => {
+                setIsHeaderHidden(false);
+                setMegaMenuCategoryName((currentCategoryName) =>
+                  currentCategoryName || activeCategory || categories[0]?.name || "",
+                );
+                setIsCategoryMegaMenuOpen((isOpen) => !isOpen);
+              }}
+              className="secondary-category-tab secondary-category-tab-menu inline-flex items-center gap-2 px-3.5 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+              aria-haspopup="dialog"
+              aria-expanded={isCategoryMegaMenuOpen}
+            >
+              Categories
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-4 w-4 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            {secondaryCategories.map((category) => {
+              const isActiveCategory = category.name === activeCategory && !activeSubCategory;
+
+              return (
+                <Link
+                  key={category.name}
+                  href={createCategoryHref(category.name)}
+                  aria-current={isActiveCategory ? "page" : undefined}
+                  className={`secondary-category-tab px-3.5 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 ${
+                    isActiveCategory ? "is-active" : ""
+                  }`}
+                >
+                  {category.name}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
+      {isCategoryMegaMenuOpen && megaMenuCategory ? (
+        <div
+          role="presentation"
+          className="category-mega-menu absolute inset-x-0 top-full z-50"
+          onClick={() => setIsCategoryMegaMenuOpen(false)}
+        >
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div
+              ref={categoryMegaMenuRef}
+              role="dialog"
+              aria-label="Categories"
+              className="category-mega-menu-panel grid gap-6 rounded-b-2xl p-5 shadow-xl lg:grid-cols-[240px_minmax(0,1fr)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="category-mega-menu-sidebar">
+                <p className="category-mega-menu-eyebrow">Categories</p>
+                <div className="mt-2 space-y-0.5">
+                  {categories.map((category) => {
+                    const isSelected = category.name === megaMenuCategory.name;
+
+                    return (
+                      <button
+                        key={category.name}
+                        type="button"
+                        onMouseEnter={() => setMegaMenuCategoryName(category.name)}
+                        onFocus={() => setMegaMenuCategoryName(category.name)}
+                        onClick={() => setMegaMenuCategoryName(category.name)}
+                        className={`category-mega-menu-category ${
+                          isSelected ? "is-active" : ""
+                        }`}
+                      >
+                        {category.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="category-mega-menu-eyebrow">Browse</p>
+                    <h2 className="category-mega-menu-title">{megaMenuCategory.name}</h2>
+                  </div>
+                  <Link
+                    href={createCategoryHref(megaMenuCategory.name)}
+                    onClick={() => setIsCategoryMegaMenuOpen(false)}
+                    className="category-mega-menu-shop-all"
+                  >
+                    Shop all
+                  </Link>
+                </div>
+
+                <div className="category-mega-menu-grid mt-4">
+                  {megaMenuCategory.subcategories.map((subcategory) => (
+                    <Link
+                      key={subcategory}
+                      href={createCategoryHref(megaMenuCategory.name, subcategory)}
+                      onClick={() => setIsCategoryMegaMenuOpen(false)}
+                      className="category-mega-menu-subcategory"
+                    >
+                      {subcategory}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       </header>
 
-      <button
-        type="button"
-        aria-label="Close menu"
-        className={`fixed inset-0 z-40 bg-slate-950/35 transition-opacity duration-300 ease-out motion-reduce:duration-0 ${
-          isMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-        }`}
-        onClick={closeMenu}
-        aria-hidden={!isMenuOpen}
-      />
+      {isCategoryMegaMenuOpen ? (
+        <button
+          type="button"
+          aria-label="Close categories"
+          className="category-mega-menu-backdrop fixed inset-0 z-30 cursor-default"
+          onClick={() => setIsCategoryMegaMenuOpen(false)}
+        />
+      ) : null}
+
+      {isMenuOpen ? (
+        <div id={mobileMenuId} className="fixed inset-0 z-50 pointer-events-none">
+          <div
+            className="absolute inset-0 pointer-events-auto bg-slate-950/35 opacity-100 transition-opacity duration-300 ease-out motion-reduce:duration-0"
+            onClick={closeMenu}
+            aria-hidden="true"
+          />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-full max-w-sm transform-gpu flex-col border-r border-slate-200 bg-white text-slate-950 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
-          isMenuOpen ? "translate-x-0" : "-translate-x-full"
+        ref={mainMenuDialogRef}
+        role={isCategoryMenuOpen ? undefined : "dialog"}
+        aria-modal={isCategoryMenuOpen ? undefined : true}
+        aria-label="Site menu"
+        tabIndex={-1}
+        onKeyDown={handleMenuKeyDown}
+        className={`mobile-menu-panel pointer-events-auto fixed inset-y-0 left-0 z-10 flex w-full max-w-sm transform-gpu flex-col border-r border-slate-200 text-slate-950 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
+          isCategoryMenuOpen ? "-translate-x-full" : "translate-x-0"
         }`}
-        aria-hidden={!isMenuOpen}
+        aria-hidden={isCategoryMenuOpen}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 bg-[#e6f24f] px-5 py-4">
-          <p className="truncate text-xl font-bold text-black">Menu</p>
+        <div className="site-menu-header flex items-center justify-between border-b px-5 py-4">
+          <p className="truncate text-xl font-bold">Menu</p>
           <button
             type="button"
             aria-label="Close menu"
@@ -382,7 +836,7 @@ export default function TopNavClient({
               href="/"
               onClick={handleSidebarHomeClick}
               aria-current={pathname === "/" ? "page" : undefined}
-              className="sidebar-menu-action mt-3 inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+              className="sidebar-menu-action mt-3 inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
             >
               <svg
                 aria-hidden="true"
@@ -406,7 +860,7 @@ export default function TopNavClient({
                 setOpenCategory("");
                 setIsCategoryMenuOpen(true);
               }}
-              className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+              className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
               aria-expanded={isCategoryMenuOpen}
             >
               <svg
@@ -439,7 +893,7 @@ export default function TopNavClient({
                     href="/profile"
                     onClick={closeMenu}
                     aria-current={profileIsActive ? "page" : undefined}
-                    className={`inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15 ${
+                    className={`inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                       profileIsActive
                         ? "sidebar-menu-action-active"
                         : "sidebar-menu-action"
@@ -458,12 +912,37 @@ export default function TopNavClient({
                       <circle cx="12" cy="8" r="4" />
                       <path d="M4 21a8 8 0 0 1 16 0" />
                     </svg>
+                    <span>Profile</span>
+                  </Link>
+                  <Link
+                    href="/settings"
+                    onClick={closeMenu}
+                    aria-current={settingsIsActive ? "page" : undefined}
+                    className={`inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                      settingsIsActive
+                        ? "sidebar-menu-action-active"
+                        : "sidebar-menu-action"
+                    }`}
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.05V3h4v.08a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z" />
+                    </svg>
                     <span>Settings</span>
                   </Link>
                   <form action={signOutAction}>
                     <button
                       type="submit"
-                      className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                      className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
                     >
                       <svg
                         aria-hidden="true"
@@ -487,7 +966,7 @@ export default function TopNavClient({
                 <Link
                   href={authHref}
                   onClick={closeMenu}
-                  className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                  className="sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
                 >
                   <svg
                     aria-hidden="true"
@@ -513,7 +992,8 @@ export default function TopNavClient({
             <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
               Appearance
             </h2>
-            <div className="mt-3 grid grid-cols-3 gap-1 rounded-full border border-slate-900 bg-white p-1 shadow-inner">
+            <p className="mt-3 text-sm font-semibold text-slate-950">Theme</p>
+            <div className="mt-2 grid grid-cols-3 gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-inner">
               {appearanceOptions.map((option) => {
                 const isSelected = option.value === themeMode;
 
@@ -527,7 +1007,7 @@ export default function TopNavClient({
                     onClick={() => handleThemeChange(option.value)}
                     className={`inline-flex h-10 min-w-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 ${
                       isSelected
-                        ? "border border-[#e0115f] bg-[#e0115f] text-white shadow-sm ring-2 ring-[#e0115f]/25"
+                        ? "border border-[#dc115e] bg-[#dc115e] text-white shadow-sm ring-2 ring-[#dc115e]/25"
                         : "appearance-mode-option"
                     }`}
                   >
@@ -591,12 +1071,18 @@ export default function TopNavClient({
       </aside>
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-full max-w-sm transform-gpu flex-col border-r border-slate-200 bg-white text-slate-950 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
-          isMenuOpen && isCategoryMenuOpen ? "translate-x-0" : "-translate-x-full"
+        ref={categoryMenuDialogRef}
+        role={isCategoryMenuOpen ? "dialog" : undefined}
+        aria-modal={isCategoryMenuOpen ? true : undefined}
+        aria-label="Categories menu"
+        tabIndex={-1}
+        onKeyDown={handleMenuKeyDown}
+        className={`mobile-menu-panel pointer-events-auto fixed inset-y-0 left-0 z-20 flex w-full max-w-sm transform-gpu flex-col border-r border-slate-200 text-slate-950 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:duration-0 ${
+          isCategoryMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
-        aria-hidden={!isMenuOpen || !isCategoryMenuOpen}
+        aria-hidden={!isCategoryMenuOpen}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 bg-[#e6f24f] px-5 py-4">
+        <div className="site-menu-header flex items-center justify-between border-b px-5 py-4">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -621,7 +1107,7 @@ export default function TopNavClient({
                 <path d="m12 19-7-7 7-7" />
               </svg>
             </button>
-            <p className="truncate text-xl font-bold text-black">Categories</p>
+            <p className="truncate text-xl font-bold">Categories</p>
           </div>
           <button
             type="button"
@@ -648,15 +1134,19 @@ export default function TopNavClient({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
           <div className="grid gap-1">
             <Link
-              href="/"
+              href={createAllCategoriesHref()}
               onClick={closeMenu}
-              className="sidebar-menu-action rounded-lg px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+              aria-current={activeCategory ? undefined : "page"}
+              className={`rounded-lg px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                activeCategory ? "sidebar-menu-action" : "sidebar-menu-action-active"
+              }`}
             >
               All categories
             </Link>
             {categories.map((dealCategory) => {
               const hasSubcategories = dealCategory.subcategories.length > 0;
               const isExpanded = openCategory === dealCategory.name;
+              const isActiveCategory = dealCategory.name === activeCategory;
 
               return (
                 <div key={dealCategory.name}>
@@ -664,8 +1154,11 @@ export default function TopNavClient({
                     <button
                       type="button"
                       onClick={() => setOpenCategory(isExpanded ? "" : dealCategory.name)}
-                      className="sidebar-menu-action flex w-full items-center justify-between rounded-lg px-1 py-2 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                      className={`flex w-full items-center justify-between rounded-lg px-1 py-2 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                        isActiveCategory ? "sidebar-menu-action-active" : "sidebar-menu-action"
+                      }`}
                       aria-expanded={isExpanded}
+                      aria-current={isActiveCategory && !activeSubCategory ? "page" : undefined}
                     >
                       <span>{dealCategory.name}</span>
                       <span aria-hidden="true" className="text-current">
@@ -676,7 +1169,10 @@ export default function TopNavClient({
                     <Link
                       href={createCategoryHref(dealCategory.name)}
                       onClick={closeMenu}
-                      className="sidebar-menu-action block rounded-lg px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                      aria-current={isActiveCategory ? "page" : undefined}
+                      className={`block rounded-lg px-1 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                        isActiveCategory ? "sidebar-menu-action-active" : "sidebar-menu-action"
+                      }`}
                     >
                       {dealCategory.name}
                     </Link>
@@ -687,20 +1183,34 @@ export default function TopNavClient({
                       <Link
                         href={createCategoryHref(dealCategory.name)}
                         onClick={closeMenu}
-                        className="sidebar-menu-action rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
+                        aria-current={isActiveCategory && !activeSubCategory ? "page" : undefined}
+                        className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                          isActiveCategory && !activeSubCategory
+                            ? "sidebar-menu-action-active"
+                            : "sidebar-menu-action"
+                        }`}
                       >
                         All {dealCategory.name}
                       </Link>
-                      {dealCategory.subcategories.map((subcategory) => (
-                        <Link
-                          key={subcategory}
-                          href={createCategoryHref(dealCategory.name, subcategory)}
-                          onClick={closeMenu}
-                          className="sidebar-menu-action rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e0115f]/15"
-                        >
-                          {subcategory}
-                        </Link>
-                      ))}
+                      {dealCategory.subcategories.map((subcategory) => {
+                        const isActiveSubCategory = isActiveCategory && subcategory === activeSubCategory;
+
+                        return (
+                          <Link
+                            key={subcategory}
+                            href={createCategoryHref(dealCategory.name, subcategory)}
+                            onClick={closeMenu}
+                            aria-current={isActiveSubCategory ? "page" : undefined}
+                            className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                              isActiveSubCategory
+                                ? "sidebar-menu-action-active"
+                                : "sidebar-menu-action"
+                            }`}
+                          >
+                            {subcategory}
+                          </Link>
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
@@ -709,6 +1219,8 @@ export default function TopNavClient({
           </div>
         </div>
       </aside>
+        </div>
+      ) : null}
     </>
   );
 }

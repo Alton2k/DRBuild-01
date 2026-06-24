@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
 
 interface SelectOption {
   value: string;
@@ -33,6 +35,9 @@ export default function SelectField({
   disabled,
   onChange,
 }: SelectFieldProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selectedOption = options.find((option) => option.value === value);
   const describedBy = [
     hint ? `${id}-hint` : "",
     error ? `${id}-error` : "",
@@ -40,38 +45,110 @@ export default function SelectField({
     .filter(Boolean)
     .join(" ");
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen]);
+
   return (
     <div className="space-y-2">
       <label htmlFor={id} className="block text-sm font-semibold text-slate-950">
         {label}
         {required ? <span className="ml-1 text-rose-600">*</span> : null}
       </label>
-      <select
-        id={id}
-        name={name ?? id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`block h-12 w-full rounded-2xl border px-4 text-sm shadow-sm outline-none transition focus-visible:bg-white focus-visible:ring-4 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 disabled:opacity-80 ${
-          error
-            ? "border-rose-300 bg-rose-50 text-slate-950 focus-visible:border-rose-400 focus-visible:ring-rose-100"
-            : value
-            ? "border-slate-200 bg-slate-50 text-slate-950 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:ring-slate-200"
-            : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:ring-slate-200"
-        }`}
-        aria-invalid={Boolean(error)}
-        aria-describedby={describedBy || undefined}
-        required={required}
-        disabled={disabled}
-      >
-        <option value="" disabled>
-          Choose an option
-        </option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value} className="text-slate-900">
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <div ref={containerRef} className="relative">
+        <input type="hidden" name={name ?? id} value={value} />
+        <button
+          id={id}
+          type="button"
+          onClick={() => {
+            if (!disabled) {
+              setIsOpen((current) => !current);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setIsOpen(false);
+            }
+          }}
+          className={`post-form-field post-select-field flex h-12 w-full items-center rounded-2xl border px-4 pr-14 text-left text-sm shadow-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-80 ${
+            error
+              ? "post-form-field-error"
+              : value
+              ? ""
+              : "text-slate-500"
+          }`}
+          aria-describedby={describedBy || undefined}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          disabled={disabled}
+        >
+          <span className="min-w-0 truncate">{selectedOption?.label ?? "Choose an option"}</span>
+        </button>
+        <span
+          aria-hidden="true"
+          className="post-select-caret pointer-events-none absolute bottom-1 right-1 top-1 flex w-10 items-center justify-center rounded-xl"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2.2"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+        {isOpen ? (
+          <div
+            role="listbox"
+            aria-labelledby={id}
+            className="post-select-menu absolute left-0 right-0 top-[calc(100%+0.45rem)] z-30 max-h-72 overflow-auto rounded-2xl border p-1 shadow-2xl"
+          >
+            <button
+              type="button"
+              role="option"
+              aria-selected={!value}
+              disabled={required}
+              onClick={() => {
+                onChange("");
+                setIsOpen(false);
+              }}
+              className="post-select-menu-option w-full rounded-xl px-3 py-2.5 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Choose an option
+            </button>
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className="post-select-menu-option w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
       <div className="space-y-1 text-sm leading-5">
         {hint ? <p id={`${id}-hint`} className="text-slate-500">{hint}</p> : null}
         {error ? (

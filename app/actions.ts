@@ -8,6 +8,7 @@ import {
   findDuplicateDeal,
   getAuthorDealModerationStats,
   getDealById,
+  hasDealReportForViewer,
   markDealExpired,
   reportDeal,
   restoreReportedDeal,
@@ -15,8 +16,38 @@ import {
   voteDeal,
   type DealStatus,
 } from "@/lib/deals";
-import { createComment, deleteComment, deleteOwnComment, likeComment } from "@/lib/comments";
-import { isAdminUser, requireAdminUser, requireCurrentUser } from "@/lib/auth";
+import { createComment, deleteComment, deleteOwnComment, hasDuplicateComment, likeComment } from "@/lib/comments";
+import {
+  getCurrentUser,
+  getPublicUserDisplayName,
+  isAdminUser,
+  requireAdminUser,
+  requireCurrentUser,
+} from "@/lib/auth";
+import { followUser, isFollowingUser, unfollowUser } from "@/lib/follows";
+import { saveDealForUser, unsaveDealForUser } from "@/lib/savedDeals";
+import { getAccountSettingsForUser } from "@/lib/userSettings";
+import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
+import { validateDealUrl } from "@/lib/dealUrlSecurity";
+import {
+  checkViewerAndIpRateLimit,
+  commentViewerCookieName,
+  getClientIp,
+  getOrCreateCommentViewerId,
+  getOrCreateDealViewerId,
+  logAbuseEvent,
+} from "@/lib/abusePrevention";
+import {
+  getString,
+  isDealStatus,
+  isReportReason,
+  isValidActionId,
+  isVoteDirection,
+  parseFutureExpiration,
+  parseNonNegativeNumber,
+  parsePositiveNumber,
+  validateCommentBody,
+} from "@/lib/serverActionValidation";
 import type { DealActionState } from "./dealActionState";
 
 export type VoteDirection = "up" | "down";
@@ -33,8 +64,32 @@ export interface DuplicateDealCheckResult {
   };
 }
 
-const commentViewerCookieName = "dealmy_comment_viewer_id";
-const dealViewerCookieName = "dealmy_deal_viewer_id";
+export type ReportDealActionState = {
+  ok: boolean;
+  message: string;
+};
+
+export type CommentActionState = {
+  ok: boolean;
+  message: string;
+};
+
+export type SaveDealActionResult = {
+  ok: boolean;
+  isSaved: boolean;
+  message?: string;
+  loginRequired?: boolean;
+};
+
+export type FollowActionResult = {
+  ok: boolean;
+  isFollowing: boolean;
+  followerCount: number;
+  followingCount: number;
+  message?: string;
+  loginRequired?: boolean;
+};
+
 const trustedAuthorApprovedDealThreshold = 3;
 const suspiciousShortDescriptionLength = 40;
 const suspiciousTitleLength = 12;
@@ -64,19 +119,7 @@ const suspiciousHostFragments = [
   "telegram.me",
 ];
 
-function getString(formData: FormData, key: string) {
-  const value = formData.get(key);
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function isValidHttpUrl(value: string) {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+const emptyFollowCounts = { followers: 0, following: 0 };
 
 function normalizeOptionalImageUrl(value: string, baseUrl: string) {
   if (!value) {
@@ -118,11 +161,6 @@ function normalizeImageGalleryUrls(value: string, baseUrl: string) {
   } catch {
     return [];
   }
-}
-
-function parsePositiveNumber(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function getDealText(input: {
@@ -270,46 +308,6 @@ async function getInitialDealModeration(input: {
   };
 }
 
-async function getOrCreateCommentViewerId() {
-  const cookieStore = await cookies();
-  const existingViewerId = cookieStore.get(commentViewerCookieName)?.value;
-
-  if (existingViewerId) {
-    return existingViewerId;
-  }
-
-  const viewerId = crypto.randomUUID();
-
-  cookieStore.set(commentViewerCookieName, viewerId, {
-    httpOnly: true,
-    maxAge: 60 * 60 * 24 * 365,
-    sameSite: "lax",
-    path: "/",
-  });
-
-  return viewerId;
-}
-
-async function getOrCreateDealViewerId() {
-  const cookieStore = await cookies();
-  const existingViewerId = cookieStore.get(dealViewerCookieName)?.value;
-
-  if (existingViewerId) {
-    return existingViewerId;
-  }
-
-  const viewerId = crypto.randomUUID();
-
-  cookieStore.set(dealViewerCookieName, viewerId, {
-    httpOnly: true,
-    maxAge: 60 * 60 * 24 * 365,
-    sameSite: "lax",
-    path: "/",
-  });
-
-  return viewerId;
-}
-
 export async function createDealAction(
   _previousState: DealActionState,
   formData: FormData,
@@ -328,10 +326,14 @@ export async function createDealAction(
   const url = getString(formData, "url");
   const priceValue = getString(formData, "price");
   const originalPriceValue = getString(formData, "originalPrice");
+  const shippingMode = getString(formData, "shippingMode");
+  const shippingCostValue = getString(formData, "shippingCost");
   const store = getString(formData, "store");
   const category = getString(formData, "category");
   const subCategory = getString(formData, "subCategory");
-  const description = getString(formData, "description");
+  const expiresAtValue = getString(formData, "expiresAt");
+  const description = sanitizeDescriptionHtml(getString(formData, "description"));
+  const descriptionText = getDescriptionText(description);
   const rawImageUrl = getString(formData, "imageUrl");
   const rawUploadedImageUrl = getString(formData, "uploadedImageUrl");
   const rawImageGalleryUrls = getString(formData, "imageGalleryUrls");
@@ -339,15 +341,20 @@ export async function createDealAction(
   const errors: DealActionState["errors"] = {};
   const price = parsePositiveNumber(priceValue);
   const originalPrice = originalPriceValue ? parsePositiveNumber(originalPriceValue) : null;
+  const hasFreeShipping = shippingMode !== "paid";
+  const shippingCost = hasFreeShipping ? 0 : parseNonNegativeNumber(shippingCostValue);
+  const expiration = parseFutureExpiration(expiresAtValue);
 
   if (!title) {
     errors.title = "Deal title is required.";
   }
 
+  const urlValidation = url ? validateDealUrl(url) : null;
+
   if (!url) {
     errors.url = "Deal URL is required.";
-  } else if (!isValidHttpUrl(url)) {
-    errors.url = "Enter a valid URL starting with http:// or https://.";
+  } else if (!urlValidation?.ok) {
+    errors.url = urlValidation?.error ?? "Enter a valid URL starting with http:// or https://.";
   }
 
   if (price === null) {
@@ -360,6 +367,10 @@ export async function createDealAction(
     errors.originalPrice = "Original price should be higher than current price.";
   }
 
+  if (!hasFreeShipping && shippingCost === null) {
+    errors.shippingCost = "Shipping cost must be 0 or more.";
+  }
+
   if (!store) {
     errors.store = "Store or availability is required.";
   }
@@ -368,7 +379,11 @@ export async function createDealAction(
     errors.category = "Category is required.";
   }
 
-  if (!description) {
+  if (expiration.error) {
+    errors.expiresAt = expiration.error;
+  }
+
+  if (!descriptionText) {
     errors.description = "Description is required.";
   }
 
@@ -380,17 +395,18 @@ export async function createDealAction(
     };
   }
 
-  const imageGalleryUrls = normalizeImageGalleryUrls(rawImageGalleryUrls, url);
-  const uploadedImageUrl = imageGalleryUrls[0] ?? normalizeOptionalImageUrl(rawUploadedImageUrl, url);
-  const imageUrl = uploadedImageUrl || normalizeOptionalImageUrl(rawImageUrl, url);
-  const duplicateMatch = await findDuplicateDeal({ title, url, store });
+  const normalizedUrl = urlValidation?.ok ? urlValidation.url : url;
+  const imageGalleryUrls = normalizeImageGalleryUrls(rawImageGalleryUrls, normalizedUrl);
+  const uploadedImageUrl = imageGalleryUrls[0] ?? normalizeOptionalImageUrl(rawUploadedImageUrl, normalizedUrl);
+  const imageUrl = uploadedImageUrl || normalizeOptionalImageUrl(rawImageUrl, normalizedUrl);
+  const duplicateMatch = await findDuplicateDeal({ title, url: normalizedUrl, store });
   const automatedSignals = getAutomatedModerationSignals({
     title,
-    description,
+    description: descriptionText,
     store,
     category,
     subCategory,
-    url,
+    url: normalizedUrl,
     hasImage: Boolean(imageUrl || uploadedImageUrl || imageGalleryUrls.length > 0),
   });
   const moderation = await getInitialDealModeration({
@@ -404,12 +420,15 @@ export async function createDealAction(
   try {
     deal = await createDeal({
       title,
-      url,
+      url: normalizedUrl,
       price,
       originalPrice,
+      hasFreeShipping,
+      shippingCost,
       store,
       category,
       subCategory,
+      expiredAt: expiration.expiresAt,
       description,
       imageUrl,
       uploadedImageUrl,
@@ -427,12 +446,10 @@ export async function createDealAction(
         "community",
     });
   } catch (error) {
+    console.error("Could not create deal", error);
     return {
       ok: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Could not create the deal in Strapi.",
+      message: "Could not create the deal right now. Please try again.",
     };
   }
 
@@ -458,18 +475,19 @@ export async function checkDuplicateDealAction(input: {
   url: string;
   store: string;
 }): Promise<DuplicateDealCheckResult> {
-  const title = input.title.trim();
-  const url = input.url.trim();
-  const store = input.store.trim();
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  const url = typeof input.url === "string" ? input.url.trim() : "";
+  const store = typeof input.store === "string" ? input.store.trim() : "";
+  const urlValidation = url ? validateDealUrl(url) : null;
 
-  if (!title || !url || !store || !isValidHttpUrl(url)) {
+  if (!url || !urlValidation?.ok) {
     return {
       ok: true,
       message: "",
     };
   }
 
-  const duplicateMatch = await findDuplicateDeal({ title, url, store });
+  const duplicateMatch = await findDuplicateDeal({ title, url: urlValidation.url, store });
 
   if (!duplicateMatch) {
     return {
@@ -494,7 +512,7 @@ export async function checkDuplicateDealAction(input: {
 export async function moderateDealAction(id: string, status: DealStatus) {
   await requireAdminUser();
 
-  if (!["pending", "approved", "rejected"].includes(status)) {
+  if (!isValidActionId(id) || !isDealStatus(status)) {
     throw new Error("Invalid moderation status.");
   }
 
@@ -507,27 +525,82 @@ export async function moderateDealAction(id: string, status: DealStatus) {
 export async function markDealExpiredAction(id: string) {
   await requireAdminUser();
 
+  if (!isValidActionId(id)) {
+    throw new Error("Invalid deal id.");
+  }
+
   await markDealExpired(id);
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath(`/deal/${id}`);
 }
 
-export async function reportDealAction(id: string, formData: FormData) {
+export async function reportDealAction(
+  id: string,
+  _previousState: ReportDealActionState,
+  formData: FormData,
+): Promise<ReportDealActionState> {
+  if (!isValidActionId(id)) {
+    return {
+      ok: false,
+      message: "Could not report this deal right now. Please try again.",
+    };
+  }
+
   const reason = getString(formData, "reason");
 
-  if (!reason) {
-    return;
+  if (!isReportReason(reason)) {
+    return {
+      ok: false,
+      message: "Please choose a report reason.",
+    };
   }
 
   const viewerId = await getOrCreateDealViewerId();
-  await reportDeal(id, viewerId, reason);
+  const ip = await getClientIp();
+
+  if (!checkViewerAndIpRateLimit("report", viewerId, ip, 5, 60 * 60)) {
+    logAbuseEvent("report", "rate_limited", { viewerId, ip, dealId: id });
+    return {
+      ok: false,
+      message: "You’re reporting too quickly. Please try again later.",
+    };
+  }
+
+  if (await hasDealReportForViewer(id, viewerId)) {
+    logAbuseEvent("report", "duplicate_report", { viewerId, ip, dealId: id });
+    return {
+      ok: false,
+      message: "You’ve already reported this deal. Thanks for helping keep the community safe.",
+    };
+  }
+
+  const result = await reportDeal(id, viewerId, reason);
+
+  if (!result) {
+    return {
+      ok: false,
+      message: "Could not report this deal right now. Please try again.",
+    };
+  }
+
   revalidatePath("/admin");
   revalidatePath(`/deal/${id}`);
+
+  return {
+    ok: result.didReport,
+    message: result.didReport
+      ? "Thanks for the report. Our moderators will take a look."
+      : "You’ve already reported this deal. Thanks for helping keep the community safe.",
+  };
 }
 
 export async function restoreReportedDealAction(id: string) {
   await requireAdminUser();
+
+  if (!isValidActionId(id)) {
+    throw new Error("Invalid deal id.");
+  }
 
   await restoreReportedDeal(id);
   revalidatePath("/");
@@ -539,11 +612,50 @@ export async function voteDealAction(
   id: string,
   direction: VoteDirection,
 ) {
-  if (!["up", "down"].includes(direction)) {
-    throw new Error("Invalid vote direction.");
+  if (!isValidActionId(id) || !isVoteDirection(direction)) {
+    return {
+      ok: false,
+      score: 0,
+      viewerVote: null,
+      message: "Could not save your vote right now. Please try again.",
+    };
+  }
+
+  const deal = await getDealById(id);
+
+  if (!deal) {
+    return {
+      ok: false,
+      score: 0,
+      viewerVote: null,
+      message: "Could not find this deal. Please refresh and try again.",
+    };
+  }
+
+  if (deal.isExpired) {
+    return {
+      ok: false,
+      score: deal.score,
+      viewerVote: null,
+      message: "Voting is closed because this deal has expired.",
+    };
   }
 
   const viewerId = await getOrCreateDealViewerId();
+  const ip = await getClientIp();
+
+  // TODO: Consider a LOGIN_REQUIRED_FOR_VOTING feature flag once public usage grows.
+  if (!checkViewerAndIpRateLimit("vote", viewerId, ip, 30, 10 * 60)) {
+    logAbuseEvent("vote", "rate_limited", { viewerId, ip, dealId: id });
+
+    return {
+      ok: false,
+      score: 0,
+      viewerVote: null,
+      message: "You’re voting too quickly. Please try again later.",
+    };
+  }
+
   const result = await voteDeal(id, viewerId, direction);
 
   if (!result) {
@@ -551,6 +663,7 @@ export async function voteDealAction(
       ok: false,
       score: 0,
       viewerVote: null,
+      message: "Could not save your vote right now. Please try again.",
     };
   }
 
@@ -567,40 +680,131 @@ export async function voteDealAction(
 export async function deleteDealAction(id: string) {
   await requireAdminUser();
 
+  if (!isValidActionId(id)) {
+    throw new Error("Invalid deal id.");
+  }
+
   await deleteDeal(id);
   revalidatePath("/");
   revalidatePath("/admin");
 }
 
-export async function createCommentAction(dealId: string, formData: FormData): Promise<void> {
-  const authorName = getString(formData, "authorName");
-  const body = getString(formData, "body");
+export async function createCommentAction(
+  dealId: string,
+  _previousState: CommentActionState,
+  formData: FormData,
+): Promise<CommentActionState> {
+  if (!isValidActionId(dealId)) {
+    return {
+      ok: false,
+      message: "Could not find this deal. Please refresh and try again.",
+    };
+  }
+
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      message: "Please log in to comment.",
+    };
+  }
+
+  const fallbackAuthorName = user.user_metadata.full_name ?? user.user_metadata.name ?? user.email ?? "Deal Rakyat member";
+  const authorSettings = await getAccountSettingsForUser(user.id, fallbackAuthorName).catch(() => null);
+  const authorName = authorSettings?.profile.userName || fallbackAuthorName;
+  const commentValidation = validateCommentBody(getString(formData, "body"));
   const parentId = getString(formData, "parentId") || null;
 
-  if (!authorName || !body) {
-    return;
+  if (parentId && !isValidActionId(parentId)) {
+    return {
+      ok: false,
+      message: "Could not post this reply. Please refresh and try again.",
+    };
+  }
+
+  if (!commentValidation.ok) {
+    return {
+      ok: false,
+      message: commentValidation.message,
+    };
   }
 
   const deal = await getDealById(dealId);
 
   if (!deal) {
-    return;
+    return {
+      ok: false,
+      message: "Could not find this deal. Please refresh and try again.",
+    };
+  }
+
+  if (deal.isExpired) {
+    return {
+      ok: false,
+      message: "Comments are closed because this deal has expired.",
+    };
   }
 
   const viewerId = await getOrCreateCommentViewerId();
+  const ip = await getClientIp();
+
+  if (!checkViewerAndIpRateLimit("comment", viewerId, ip, 10, 10 * 60)) {
+    logAbuseEvent("comment", "rate_limited", { viewerId, ip, dealId });
+
+    return {
+      ok: false,
+      message: "You’re commenting too quickly. Please try again later.",
+    };
+  }
+
+  if (await hasDuplicateComment(dealId, viewerId, commentValidation.body)) {
+    logAbuseEvent("comment", "duplicate_comment", { viewerId, ip, dealId });
+
+    return {
+      ok: false,
+      message: "You’ve already posted that comment.",
+    };
+  }
 
   await createComment({
     dealId,
     parentId,
     authorViewerId: viewerId,
+    authorUserId: user.id,
     authorName,
-    body,
+    body: commentValidation.body,
   });
 
+  revalidatePath("/");
   revalidatePath(`/deal/${dealId}`);
+  revalidatePath("/profile");
+
+  return {
+    ok: true,
+    message: "Comment posted.",
+  };
 }
 
 export async function likeCommentAction(dealId: string, commentId: string) {
+  if (!isValidActionId(dealId) || !isValidActionId(commentId)) {
+    return {
+      ok: false,
+      likeCount: 0,
+      viewerHasLiked: false,
+    };
+  }
+
+  const deal = await getDealById(dealId);
+
+  if (!deal || deal.isExpired) {
+    return {
+      ok: false,
+      likeCount: 0,
+      viewerHasLiked: false,
+    };
+  }
+
   const viewerId = await getOrCreateCommentViewerId();
   const result = await likeComment(dealId, commentId, viewerId);
 
@@ -624,14 +828,22 @@ export async function likeCommentAction(dealId: string, commentId: string) {
 }
 
 export async function deleteOwnCommentAction(dealId: string, commentId: string) {
-  const cookieStore = await cookies();
-  const viewerId = cookieStore.get(commentViewerCookieName)?.value;
-
-  if (!viewerId) {
+  if (!isValidActionId(dealId) || !isValidActionId(commentId)) {
     return { ok: false };
   }
 
-  const result = await deleteOwnComment(commentId, viewerId);
+  const cookieStore = await cookies();
+  const viewerId = cookieStore.get(commentViewerCookieName)?.value;
+  const user = await getCurrentUser();
+
+  if (!viewerId && !user) {
+    return { ok: false };
+  }
+
+  const result = await deleteOwnComment(commentId, {
+    viewerId,
+    authorUserId: user?.id,
+  });
 
   if (!result || result.dealId !== dealId) {
     return { ok: false };
@@ -639,12 +851,193 @@ export async function deleteOwnCommentAction(dealId: string, commentId: string) 
 
   revalidatePath("/");
   revalidatePath(`/deal/${dealId}`);
+  revalidatePath("/profile");
 
   return { ok: true };
 }
 
+export async function toggleSavedDealAction(
+  dealId: string,
+  shouldSave: boolean,
+): Promise<SaveDealActionResult> {
+  if (!isValidActionId(dealId) || typeof shouldSave !== "boolean") {
+    return {
+      ok: false,
+      isSaved: false,
+      message: "Could not update this saved deal. Please try again.",
+    };
+  }
+
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      isSaved: false,
+      loginRequired: true,
+      message: "Please log in to save deals.",
+    };
+  }
+
+  const deal = await getDealById(dealId);
+
+  if (!deal || deal.status !== "approved") {
+    return {
+      ok: false,
+      isSaved: false,
+      message: "This deal is not available to save.",
+    };
+  }
+
+  try {
+    const isSaved = shouldSave
+      ? await saveDealForUser(user.id, deal.id)
+      : await unsaveDealForUser(user.id, deal.id);
+
+    revalidatePath("/");
+    revalidatePath("/profile");
+    revalidatePath(`/deal/${deal.id}`);
+
+    return { ok: true, isSaved };
+  } catch {
+    return {
+      ok: false,
+      isSaved: !shouldSave,
+      message: "Could not update this saved deal. Please try again.",
+    };
+  }
+}
+
+export async function toggleFollowUserAction(
+  followingUserId: string,
+  shouldFollow: boolean,
+): Promise<FollowActionResult> {
+  const targetUserId = typeof followingUserId === "string" ? followingUserId.trim() : "";
+
+  if (!targetUserId || typeof shouldFollow !== "boolean") {
+    return {
+      ok: false,
+      isFollowing: false,
+      followerCount: 0,
+      followingCount: 0,
+      message: "Could not update this follow. Please try again.",
+    };
+  }
+
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      isFollowing: false,
+      followerCount: emptyFollowCounts.followers,
+      followingCount: emptyFollowCounts.following,
+      loginRequired: true,
+      message: "Please log in to follow members.",
+    };
+  }
+
+  if (user.id === targetUserId) {
+    return {
+      ok: false,
+      isFollowing: false,
+      followerCount: emptyFollowCounts.followers,
+      followingCount: emptyFollowCounts.following,
+      message: "You cannot follow yourself.",
+    };
+  }
+
+  const currentFollowingPromise = isFollowingUser(user.id, targetUserId).catch(() => false);
+
+  if (!shouldFollow) {
+    try {
+      const isFollowing = await unfollowUser(user.id, targetUserId);
+
+      revalidatePath("/profile");
+      revalidatePath(`/profile/${targetUserId}`);
+
+      return {
+        ok: true,
+        isFollowing,
+        followerCount: emptyFollowCounts.followers,
+        followingCount: emptyFollowCounts.following,
+      };
+    } catch {
+      return {
+        ok: false,
+        isFollowing: await currentFollowingPromise,
+        followerCount: emptyFollowCounts.followers,
+        followingCount: emptyFollowCounts.following,
+        message: "Could not update this follow. Please try again.",
+      };
+    }
+  }
+
+  const [currentFollowing, fallbackDisplayName, settings] = await Promise.all([
+    currentFollowingPromise,
+    getPublicUserDisplayName(targetUserId),
+    getAccountSettingsForUser(targetUserId, "").catch(() => null),
+  ]);
+
+  if (!fallbackDisplayName) {
+    return {
+      ok: false,
+      isFollowing: currentFollowing,
+      followerCount: emptyFollowCounts.followers,
+      followingCount: emptyFollowCounts.following,
+      message: "This profile is not available to follow.",
+    };
+  }
+
+  if (!settings?.toggles.publicProfile) {
+    return {
+      ok: false,
+      isFollowing: currentFollowing,
+      followerCount: emptyFollowCounts.followers,
+      followingCount: emptyFollowCounts.following,
+      message: "This profile is not available to follow.",
+    };
+  }
+
+  if (shouldFollow && !settings.toggles.allowFollowers) {
+    return {
+      ok: false,
+      isFollowing: currentFollowing,
+      followerCount: emptyFollowCounts.followers,
+      followingCount: emptyFollowCounts.following,
+      message: "This member is not accepting followers.",
+    };
+  }
+
+  try {
+    const isFollowing = await followUser(user.id, targetUserId);
+
+    revalidatePath("/profile");
+    revalidatePath(`/profile/${targetUserId}`);
+
+    return {
+      ok: true,
+      isFollowing,
+      followerCount: emptyFollowCounts.followers,
+      followingCount: emptyFollowCounts.following,
+    };
+  } catch {
+    return {
+      ok: false,
+      isFollowing: currentFollowing,
+      followerCount: emptyFollowCounts.followers,
+      followingCount: emptyFollowCounts.following,
+      message: "Could not update this follow. Please try again.",
+    };
+  }
+}
+
 export async function deleteCommentAsAdminAction(commentId: string) {
   await requireAdminUser();
+
+  if (!isValidActionId(commentId)) {
+    return { ok: false };
+  }
 
   const result = await deleteComment(commentId);
 

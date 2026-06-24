@@ -1,0 +1,42 @@
+{
+  "kind": "collectionType",
+  "collectionName": "user_settings",
+  "info": {
+    "singularName": "user-setting",
+    "pluralName": "user-settings",
+    "displayName": "User Setting"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "userId": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "profileAvatarUrl": {
+      "type": "text"
+    },
+    "profileUserName": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 80,
+      "unique": true
+    },
+    "profileBio": {
+      "type": "text"
+    },
+    "theme": {
+      "type": "enumeration",
+      "enum": ["dark", "light", "system"],
+      "default": "system"
+    },
+    "notificationSettings": {
+      "type": "json"
+    },
+    "privacySettings": {
+      "type": "json"
+    }
+  }
+}

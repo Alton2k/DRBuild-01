@@ -1,16 +1,23 @@
-import { getCurrentUser } from "@/lib/auth";
+import { AppUser, getCurrentUser } from "@/lib/auth";
 import { dealCategories } from "@/lib/categories";
 import TopNavClient from "./TopNavClient";
 
 /**
  * Loads the current user for the shared navigation shell.
  */
-export default async function TopNav() {
-  const user = await getCurrentUser();
+export default async function TopNav({
+  initialThemeMode,
+  initialUser,
+}: {
+  initialThemeMode?: "auto" | "dark" | "light";
+  initialUser?: AppUser | null;
+}) {
+  const user = initialUser === undefined ? await getCurrentUser() : initialUser;
 
   return (
     <TopNavClient
       categories={dealCategories}
+      initialThemeMode={initialThemeMode}
       userEmail={user?.email ?? null}
       userName={user?.user_metadata.name ?? user?.email ?? null}
     />

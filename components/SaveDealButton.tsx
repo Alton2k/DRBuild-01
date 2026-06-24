@@ -1,102 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-const savedDealsStorageKey = "dealmy_saved_deal_ids";
-const savedDealsChangedEventName = "dealmy:saved-deals-changed";
-
-function readSavedDealIds() {
-  if (typeof window === "undefined") {
-    return new Set<string>();
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(savedDealsStorageKey);
-    const parsedValue: unknown = rawValue ? JSON.parse(rawValue) : [];
-
-    return new Set(
-      Array.isArray(parsedValue)
-        ? parsedValue.filter((value): value is string => typeof value === "string")
-        : [],
-    );
-  } catch {
-    return new Set<string>();
-  }
-}
-
-function writeSavedDealIds(savedDealIds: Set<string>) {
-  window.localStorage.setItem(savedDealsStorageKey, JSON.stringify([...savedDealIds]));
-  window.dispatchEvent(new Event(savedDealsChangedEventName));
-}
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState, useTransition } from "react";
+import { toggleSavedDealAction } from "@/app/actions";
+import { BookmarkIcon } from "@/components/icons";
 
 export default function SaveDealButton({
   dealId,
+  initialSaved = false,
+  isSignedIn = false,
   className,
+  disabled = false,
 }: {
   dealId: string;
+  initialSaved?: boolean;
+  isSignedIn?: boolean;
   className?: string;
+  disabled?: boolean;
 }) {
-  const [isSaved, setIsSaved] = useState(false);
-  const [isReady, setIsReady] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isSaved, setIsSaved] = useState(initialSaved);
+  const [message, setMessage] = useState("");
+  const [isPending, startTransition] = useTransition();
 
-  useEffect(() => {
-    const syncSavedState = () => {
-      setIsSaved(readSavedDealIds().has(dealId));
-      setIsReady(true);
-    };
-
-    syncSavedState();
-
-    window.addEventListener("storage", syncSavedState);
-    window.addEventListener(savedDealsChangedEventName, syncSavedState);
-
-    return () => {
-      window.removeEventListener("storage", syncSavedState);
-      window.removeEventListener(savedDealsChangedEventName, syncSavedState);
-    };
-  }, [dealId]);
+  const goToLogin = () => {
+    const query = searchParams.toString();
+    const next = query ? `${pathname}?${query}` : pathname;
+    router.push(`/auth?mode=login&next=${encodeURIComponent(next)}`);
+  };
 
   const toggleSavedDeal = () => {
-    const savedDealIds = readSavedDealIds();
-
-    if (savedDealIds.has(dealId)) {
-      savedDealIds.delete(dealId);
-      setIsSaved(false);
-    } else {
-      savedDealIds.add(dealId);
-      setIsSaved(true);
+    if (disabled || isPending) {
+      return;
     }
 
-    writeSavedDealIds(savedDealIds);
+    if (!isSignedIn) {
+      goToLogin();
+      return;
+    }
+
+    const previousSaved = isSaved;
+    const nextSaved = !previousSaved;
+    setIsSaved(nextSaved);
+    setMessage("");
+
+    startTransition(async () => {
+      const result = await toggleSavedDealAction(dealId, nextSaved);
+
+      if (result.loginRequired) {
+        setIsSaved(previousSaved);
+        goToLogin();
+        return;
+      }
+
+      if (!result.ok) {
+        setIsSaved(previousSaved);
+        setMessage(result.message ?? "Could not update saved deal.");
+        return;
+      }
+
+      setIsSaved(result.isSaved);
+      router.refresh();
+    });
   };
 
   return (
-    <button
-      type="button"
-      aria-pressed={isSaved}
-      aria-label={isSaved ? "Remove saved deal" : "Save deal"}
-      onClick={toggleSavedDeal}
-      className={
-        className ??
-        `inline-flex h-12 w-12 items-center justify-center rounded-full border shadow-sm transition ${
-          isSaved
-            ? "border-slate-900 bg-slate-900 text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
-            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
-        }`
-      }
-    >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill={isReady && isSaved ? "currentColor" : "none"}
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-pressed={isSaved}
+        aria-label={
+          disabled
+            ? "Saving is unavailable for expired deals"
+            : isSaved
+              ? "Remove saved deal"
+              : "Save deal"
+        }
+        title={message || undefined}
+        onClick={toggleSavedDeal}
+        disabled={disabled || isPending}
+        className={
+          className
+            ? `${className} ${disabled || isPending ? "cursor-not-allowed opacity-45" : ""}`.trim()
+            : `inline-flex h-12 w-12 items-center justify-center rounded-full border shadow-sm transition ${
+                disabled || isPending
+                  ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-60"
+                  : isSaved
+                    ? "border-slate-900 bg-slate-900 text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+              }`
+        }
       >
-        <path d="M6 4.75A2.75 2.75 0 0 1 8.75 2h6.5A2.75 2.75 0 0 1 18 4.75V21l-6-3.5L6 21z" />
-      </svg>
-    </button>
+        <BookmarkIcon fill={isSaved ? "currentColor" : "none"} />
+      </button>
+      {message ? <span className="sr-only" aria-live="polite">{message}</span> : null}
+    </span>
   );
 }

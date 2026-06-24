@@ -3,14 +3,16 @@ import "server-only";
 import {
   getStrapiEntityFields,
   getStrapiEntityId,
+  StrapiRequestError,
   strapiRequest,
   type StrapiListResponse,
   type StrapiSingleResponse,
 } from "./strapi";
+import { dataFetchErrorResult, logDataFetchError, type DataResult } from "./dataResult";
 
 export type DealStatus = "pending" | "approved" | "rejected";
 export type DealVoteDirection = "up" | "down";
-export type DealFeedMode = "hot" | "new" | "discussed";
+export type DealFeedMode = "hot" | "new" | "discussed" | "following";
 
 export interface Deal {
   id: string;
@@ -18,6 +20,9 @@ export interface Deal {
   url: string;
   price: number;
   originalPrice: number | null;
+  voucherCode?: string;
+  hasFreeShipping?: boolean;
+  shippingCost?: number | null;
   store: string;
   category: string;
   subCategory?: string;
@@ -26,6 +31,7 @@ export interface Deal {
   uploadedImageUrl: string;
   imageGalleryUrls: string[];
   score: number;
+  commentCount: number;
   status: DealStatus;
   moderationReason: string;
   isExpired: boolean;
@@ -44,6 +50,9 @@ export interface NewDealInput {
   url: string;
   price: number;
   originalPrice?: number | null;
+  voucherCode?: string;
+  hasFreeShipping?: boolean;
+  shippingCost?: number | null;
   store: string;
   category: string;
   subCategory?: string;
@@ -51,6 +60,7 @@ export interface NewDealInput {
   imageUrl?: string;
   uploadedImageUrl?: string;
   imageGalleryUrls?: string[];
+  expiredAt?: string | null;
   status?: DealStatus;
   moderationReason?: string;
   duplicateOfDealId?: string | null;
@@ -72,18 +82,57 @@ export interface ApprovedDealFilters {
   subCategory?: string;
   feed?: DealFeedMode;
   createdAfter?: string;
+  createdBefore?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "status"> & {
+export interface StrapiPagination {
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  total: number;
+}
+
+export interface PaginatedDeals {
+  deals: Deal[];
+  pagination: StrapiPagination;
+}
+
+export type DealResult = DataResult<Deal>;
+export type DealListResult = DataResult<Deal[]>;
+export type PaginatedDealsResult = DataResult<PaginatedDeals>;
+
+type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "status" | "commentCount"> & {
   originalPrice?: number | string | null;
   createdAt?: string;
   price: number | string;
+  commentCount?: number | string | null;
   moderationStatus?: DealStatus;
 };
 
 type StrapiDealVote = {
   direction?: DealVoteDirection;
   viewerId?: string;
+  dealDocumentId?: string;
+  deal?: {
+    id?: number;
+    documentId?: string;
+  };
+};
+
+type StrapiDealVoteResponse = {
+  data: {
+    score: number;
+    viewerVote: DealVoteDirection | null;
+    didVote: boolean;
+  };
+};
+
+type StrapiDealReport = {
+  viewerId?: string;
+  reason?: string;
+  dealDocumentId?: string;
   deal?: {
     id?: number;
     documentId?: string;
@@ -104,8 +153,10 @@ function toOptionalNumber(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function toDeal(entity: Parameters<typeof getStrapiEntityFields<StrapiDeal>>[0]): Deal {
+export function toDeal(entity: Parameters<typeof getStrapiEntityFields<StrapiDeal>>[0]): Deal {
   const fields = getStrapiEntityFields(entity);
+  const expiredAt = fields.expiredAt ?? "";
+  const isPastExpiration = expiredAt ? new Date(expiredAt).getTime() <= Date.now() : false;
 
   return {
     id: getStrapiEntityId(entity),
@@ -113,6 +164,9 @@ function toDeal(entity: Parameters<typeof getStrapiEntityFields<StrapiDeal>>[0])
     url: fields.url ?? "",
     price: toNumber(fields.price),
     originalPrice: toOptionalNumber(fields.originalPrice),
+    ...(fields.voucherCode ? { voucherCode: fields.voucherCode } : {}),
+    hasFreeShipping: Boolean(fields.hasFreeShipping),
+    shippingCost: toOptionalNumber(fields.shippingCost),
     store: fields.store ?? "",
     category: fields.category ?? "",
     subCategory: fields.subCategory ?? "",
@@ -121,10 +175,11 @@ function toDeal(entity: Parameters<typeof getStrapiEntityFields<StrapiDeal>>[0])
     uploadedImageUrl: fields.uploadedImageUrl ?? "",
     imageGalleryUrls: Array.isArray(fields.imageGalleryUrls) ? fields.imageGalleryUrls : [],
     score: fields.score ?? 0,
+    commentCount: toNumber(fields.commentCount),
     status: fields.moderationStatus ?? "pending",
     moderationReason: fields.moderationReason ?? "",
-    isExpired: Boolean(fields.isExpired),
-    ...(fields.expiredAt ? { expiredAt: fields.expiredAt } : {}),
+    isExpired: Boolean(fields.isExpired) || isPastExpiration,
+    ...(expiredAt ? { expiredAt } : {}),
     ...(fields.duplicateOfDealId ? { duplicateOfDealId: fields.duplicateOfDealId } : {}),
     ...(fields.duplicateReason ? { duplicateReason: fields.duplicateReason } : {}),
     reportCount: fields.reportCount ?? 0,
@@ -141,6 +196,10 @@ function getDealSort(feed: DealFeedMode = "hot") {
   }
 
   if (feed === "discussed") {
+    return "commentCount:desc";
+  }
+
+  if (feed === "following") {
     return "createdAt:desc";
   }
 
@@ -149,7 +208,6 @@ function getDealSort(feed: DealFeedMode = "hot") {
 
 function addApprovedFilters(params: URLSearchParams, filters: ApprovedDealFilters) {
   params.set("filters[moderationStatus][$eq]", "approved");
-  params.set("filters[isExpired][$eq]", "false");
 
   if (filters.category) {
     params.set("filters[category][$eqi]", filters.category);
@@ -170,23 +228,61 @@ function addApprovedFilters(params: URLSearchParams, filters: ApprovedDealFilter
   if (filters.createdAfter) {
     params.set("filters[createdAt][$gte]", filters.createdAfter);
   }
-}
 
-export async function getDeals(): Promise<Deal[]> {
-  try {
-    const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", {
-      query: new URLSearchParams({ sort: "createdAt:desc" }),
-    });
-
-    return response.data.map(toDeal);
-  } catch {
-    return [];
+  if (filters.createdBefore) {
+    params.set("filters[createdAt][$lt]", filters.createdBefore);
   }
 }
 
+export async function getDealsResult(): Promise<DealListResult> {
+  const query = new URLSearchParams({ sort: "createdAt:desc" });
+
+  try {
+    const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query });
+
+    return { ok: true, data: response.data.map(toDeal) };
+  } catch (error) {
+    return dataFetchErrorResult({ functionName: "getDealsResult", endpoint: "/api/deals", query }, error);
+  }
+}
+
+export async function getDeals(): Promise<Deal[]> {
+  const result = await getDealsResult();
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+
+  return result.data;
+}
+
+export async function getDealsByAuthorUserIdResult(authorUserId: string): Promise<DealListResult> {
+  const query = new URLSearchParams({
+    "filters[authorUserId][$eq]": authorUserId,
+    sort: "createdAt:desc",
+  });
+
+  try {
+    const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query });
+
+    return { ok: true, data: response.data.map(toDeal) };
+  } catch (error) {
+    return dataFetchErrorResult({ functionName: "getDealsByAuthorUserIdResult", endpoint: "/api/deals", query }, error);
+  }
+}
+
+export async function getDealsByAuthorUserId(authorUserId: string): Promise<Deal[]> {
+  const result = await getDealsByAuthorUserIdResult(authorUserId);
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+
+  return result.data;
+}
+
 export async function getAuthorDealModerationStats(authorUserId: string) {
-  const deals = await getDeals();
-  const authorDeals = deals.filter((deal) => deal.authorUserId === authorUserId);
+  const authorDeals = await getDealsByAuthorUserId(authorUserId);
 
   return {
     approvedCount: authorDeals.filter((deal) => deal.status === "approved").length,
@@ -196,16 +292,104 @@ export async function getAuthorDealModerationStats(authorUserId: string) {
 }
 
 export async function getApprovedDeals(filters: ApprovedDealFilters = {}): Promise<Deal[]> {
+  const response = await getApprovedDealsPage(filters);
+  return response.deals;
+}
+
+function getPagination(meta: StrapiListResponse<StrapiDeal>["meta"], fallback: { page: number; pageSize: number }) {
+  return (
+    meta?.pagination ?? {
+      page: fallback.page,
+      pageSize: fallback.pageSize,
+      pageCount: 1,
+      total: 0,
+    }
+  );
+}
+
+export async function getApprovedDealsPageResult(filters: ApprovedDealFilters = {}): Promise<PaginatedDealsResult> {
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.max(1, filters.pageSize ?? 12);
+  const query = new URLSearchParams();
+  addApprovedFilters(query, filters);
+
   try {
-    const query = new URLSearchParams();
-    addApprovedFilters(query, filters);
     query.set("sort", getDealSort(filters.feed));
+    query.set("pagination[page]", String(page));
+    query.set("pagination[pageSize]", String(pageSize));
 
     const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query });
 
-    return response.data.map(toDeal);
-  } catch {
-    return [];
+    return {
+      ok: true,
+      data: {
+        deals: response.data.map(toDeal),
+        pagination: getPagination(response.meta, { page, pageSize }),
+      },
+    };
+  } catch (error) {
+    return dataFetchErrorResult({ functionName: "getApprovedDealsPageResult", endpoint: "/api/deals", query }, error);
+  }
+}
+
+export async function getApprovedDealsPage(filters: ApprovedDealFilters = {}): Promise<PaginatedDeals> {
+  const result = await getApprovedDealsPageResult(filters);
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+
+  return result.data;
+}
+
+export async function getApprovedDealsByAuthorUserIdsPageResult(
+  authorUserIds: string[],
+  filters: ApprovedDealFilters = {},
+): Promise<PaginatedDealsResult> {
+  const uniqueAuthorUserIds = Array.from(new Set(authorUserIds.filter(Boolean)));
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.max(1, filters.pageSize ?? 12);
+  const query = new URLSearchParams();
+
+  if (uniqueAuthorUserIds.length === 0) {
+    return {
+      ok: true,
+      data: {
+        deals: [],
+        pagination: {
+          page,
+          pageSize,
+          pageCount: 1,
+          total: 0,
+        },
+      },
+    };
+  }
+
+  addApprovedFilters(query, filters);
+  uniqueAuthorUserIds.forEach((authorUserId, index) => {
+    query.set(`filters[authorUserId][$in][${index}]`, authorUserId);
+  });
+
+  try {
+    query.set("sort", getDealSort(filters.feed));
+    query.set("pagination[page]", String(page));
+    query.set("pagination[pageSize]", String(pageSize));
+
+    const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query });
+
+    return {
+      ok: true,
+      data: {
+        deals: response.data.map(toDeal),
+        pagination: getPagination(response.meta, { page, pageSize }),
+      },
+    };
+  } catch (error) {
+    return dataFetchErrorResult(
+      { functionName: "getApprovedDealsByAuthorUserIdsPageResult", endpoint: "/api/deals", query },
+      error,
+    );
   }
 }
 
@@ -213,14 +397,40 @@ export async function searchApprovedDeals(filters: ApprovedDealFilters): Promise
   return getApprovedDeals(filters);
 }
 
-export async function getDealById(id: string): Promise<Deal | null> {
-  try {
-    const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`);
+export async function getDealByIdResult(id: string): Promise<DataResult<Deal | null>> {
+  const endpoint = `/api/deals/${id}`;
 
-    return response.data ? toDeal(response.data) : null;
-  } catch {
+  try {
+    const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(endpoint);
+
+    return { ok: true, data: response.data ? toDeal(response.data) : null };
+  } catch (error) {
+    if (error instanceof StrapiRequestError && error.status === 404) {
+      return { ok: true, data: null };
+    }
+
+    return dataFetchErrorResult({ functionName: "getDealByIdResult", endpoint }, error);
+  }
+}
+
+export async function getDealById(id: string): Promise<Deal | null> {
+  const result = await getDealByIdResult(id);
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+
+  return result.data;
+}
+
+export async function getDealByIdOrNull(id: string): Promise<Deal | null> {
+  const result = await getDealByIdResult(id);
+
+  if (!result.ok) {
     return null;
   }
+
+  return result.data;
 }
 
 export async function getDealVoteDirection(
@@ -241,11 +451,75 @@ export async function getDealVoteDirectionsByDealIds(dealIds: string[], viewerId
     return new Map(dealIds.map((dealId) => [dealId, null as DealVoteDirection | null]));
   }
 
-  const entries = await Promise.all(
-    dealIds.map(async (dealId) => [dealId, await getDealVoteDirection(dealId, viewerId)] as const),
+  const uniqueDealIds = Array.from(new Set(dealIds));
+  const query = new URLSearchParams({
+    "filters[viewerId][$eq]": viewerId,
+    "pagination[pageSize]": String(uniqueDealIds.length),
+  });
+
+  uniqueDealIds.forEach((dealId, index) => {
+    query.set(`filters[dealDocumentId][$in][${index}]`, dealId);
+  });
+
+  const response = await strapiRequest<StrapiListResponse<StrapiDealVote>>("/api/deal-votes", { query }).catch(
+    (error) => {
+      logDataFetchError({ functionName: "getDealVoteDirectionsByDealIds", endpoint: "/api/deal-votes", query }, error);
+      return null;
+    },
+  );
+  const voteEntries =
+    response?.data.flatMap((vote) => {
+      const fields = getStrapiEntityFields(vote);
+      const direction = fields.direction === "up" || fields.direction === "down" ? fields.direction : null;
+      const dealId = fields.dealDocumentId ?? fields.deal?.documentId ?? (fields.deal?.id ? String(fields.deal.id) : "");
+
+      return direction && dealId ? ([[dealId, direction] as const]) : [];
+    }) ?? [];
+
+  const votes = new Map<string, DealVoteDirection | null>(uniqueDealIds.map((dealId) => [dealId, null]));
+
+  for (const [dealId, direction] of voteEntries) {
+    votes.set(dealId, direction);
+  }
+
+  return votes;
+}
+
+async function getDealVoteCount(query: URLSearchParams) {
+  const response = await strapiRequest<StrapiListResponse<StrapiDealVote>>("/api/deal-votes", { query }).catch(
+    (error) => {
+      logDataFetchError({ functionName: "getDealVoteCount", endpoint: "/api/deal-votes", query }, error);
+      return null;
+    },
   );
 
-  return new Map(entries);
+  return response?.meta?.pagination?.total ?? 0;
+}
+
+export async function getProfileVoteStats(dealIds: string[], viewerId: string | undefined) {
+  const upvotesGivenQuery = new URLSearchParams({
+    "filters[direction][$eq]": "up",
+    "pagination[pageSize]": "1",
+  });
+  const upvotesReceivedQuery = new URLSearchParams({
+    "filters[direction][$eq]": "up",
+    "pagination[pageSize]": "1",
+  });
+
+  if (viewerId) {
+    upvotesGivenQuery.set("filters[viewerId][$eq]", viewerId);
+  }
+
+  dealIds.forEach((dealId, index) => {
+    upvotesReceivedQuery.set(`filters[dealDocumentId][$in][${index}]`, dealId);
+  });
+
+  const [upvotesGiven, upvotesReceived] = await Promise.all([
+    viewerId ? getDealVoteCount(upvotesGivenQuery) : Promise.resolve(0),
+    dealIds.length > 0 ? getDealVoteCount(upvotesReceivedQuery) : Promise.resolve(0),
+  ]);
+
+  return { upvotesGiven, upvotesReceived };
 }
 
 export async function findDuplicateDeal(
@@ -256,7 +530,10 @@ export async function findDuplicateDeal(
     "filters[moderationStatus][$ne]": "rejected",
     "pagination[pageSize]": "1",
   });
-  const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query }).catch(() => null);
+  const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query }).catch((error) => {
+    logDataFetchError({ functionName: "findDuplicateDeal", endpoint: "/api/deals", query }, error);
+    return null;
+  });
   const match = response?.data[0];
 
   if (!match) {
@@ -280,35 +557,58 @@ export async function findDuplicateDeal(
 }
 
 export async function createDeal(input: NewDealInput): Promise<Deal> {
-  const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>("/api/deals", {
-    method: "POST",
-    requireToken: true,
-    body: {
-      data: {
-        title: input.title,
-        url: input.url,
-        price: input.price,
-        originalPrice: input.originalPrice ?? null,
-        store: input.store,
-        category: input.category,
-        subCategory: input.subCategory ?? "",
-        description: input.description,
-        imageUrl: input.imageUrl ?? "",
-        uploadedImageUrl: input.uploadedImageUrl ?? "",
-        imageGalleryUrls: input.imageGalleryUrls ?? [],
-        score: 0,
-        moderationStatus: input.status ?? "pending",
-        moderationReason: input.moderationReason ?? "new_user_manual_review",
-        isExpired: false,
-        duplicateOfDealId: input.duplicateOfDealId ?? "",
-        duplicateReason: input.duplicateReason ?? "",
-        reportCount: 0,
-        authorUserId: input.authorUserId ?? "",
-        authorEmail: input.authorEmail ?? "",
-        authorName: input.authorName ?? "",
-      },
-    },
-  });
+  const baseData = {
+    title: input.title,
+    url: input.url,
+    price: input.price,
+    originalPrice: input.originalPrice ?? null,
+    store: input.store,
+    category: input.category,
+    subCategory: input.subCategory ?? "",
+    description: input.description,
+    imageUrl: input.imageUrl ?? "",
+    uploadedImageUrl: input.uploadedImageUrl ?? "",
+    imageGalleryUrls: input.imageGalleryUrls ?? [],
+    expiredAt: input.expiredAt ?? null,
+    score: 0,
+    commentCount: 0,
+    moderationStatus: input.status ?? "pending",
+    moderationReason: input.moderationReason ?? "new_user_manual_review",
+    isExpired: false,
+    duplicateOfDealId: input.duplicateOfDealId ?? "",
+    duplicateReason: input.duplicateReason ?? "",
+    reportCount: 0,
+    authorUserId: input.authorUserId ?? "",
+    authorEmail: input.authorEmail ?? "",
+    authorName: input.authorName ?? "",
+  };
+  const commercialData = {
+    hasFreeShipping: Boolean(input.hasFreeShipping),
+    shippingCost: input.shippingCost ?? null,
+  };
+  const createWithData = (data: typeof baseData & Partial<typeof commercialData>) =>
+    strapiRequest<StrapiSingleResponse<StrapiDeal>>("/api/deals", {
+      method: "POST",
+      requireToken: true,
+      body: { data },
+    });
+
+  let response;
+  try {
+    response = await createWithData({ ...baseData, ...commercialData });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const likelyMissingCommercialFields =
+      error instanceof StrapiRequestError &&
+      error.status === 400 &&
+      /hasFreeShipping|shippingCost|Invalid key/i.test(message);
+
+    if (!likelyMissingCommercialFields) {
+      throw error;
+    }
+
+    response = await createWithData(baseData);
+  }
 
   if (!response.data) {
     throw new Error("Strapi did not return the created deal.");
@@ -354,19 +654,82 @@ export async function reportDeal(id: string, viewerId: string, reason: string) {
     return null;
   }
 
-  await strapiRequest("/api/deal-reports", {
+  if (await hasDealReportForViewer(id, viewerId)) {
+    return { deal, didReport: false };
+  }
+
+  const reportResponse = await strapiRequest("/api/deal-reports", {
     method: "POST",
     requireToken: true,
     body: {
       data: {
         deal: id,
+        dealDocumentId: id,
         viewerId,
         reason,
       },
     },
+  }).catch((error) => {
+    if (isUniqueConstraintError(error)) {
+      return null;
+    }
+
+    throw error;
+  });
+
+  if (!reportResponse) {
+    return { deal, didReport: false };
+  }
+
+  const reportCount = await getDealReportCount(id);
+
+  await strapiRequest(`/api/deals/${id}`, {
+    method: "PUT",
+    requireToken: true,
+    body: {
+      data: {
+        reportCount,
+      },
+    },
+  }).catch((error) => {
+    logDataFetchError({ functionName: "reportDeal", endpoint: `/api/deals/${id}` }, error);
+    return null;
   });
 
   return { deal, didReport: true };
+}
+
+export async function hasDealReportForViewer(dealId: string, viewerId: string) {
+  const query = new URLSearchParams({
+    "filters[viewerId][$eq]": viewerId,
+    "filters[dealDocumentId][$eq]": dealId,
+    "pagination[pageSize]": "1",
+  });
+
+  const response = await strapiRequest<StrapiListResponse<StrapiDealReport>>("/api/deal-reports", { query }).catch(
+    (error) => {
+      logDataFetchError({ functionName: "hasDealReportForViewer", endpoint: "/api/deal-reports", query }, error);
+      return null;
+    },
+  );
+
+  return Boolean(response?.data[0]);
+}
+
+async function getDealReportCount(dealId: string) {
+  const query = new URLSearchParams({
+    "filters[dealDocumentId][$eq]": dealId,
+    "pagination[pageSize]": "1",
+  });
+
+  const response = await strapiRequest<StrapiListResponse<StrapiDealReport>>("/api/deal-reports", { query }).catch(
+    (error) => {
+      logDataFetchError({ functionName: "getDealReportCount", endpoint: "/api/deal-reports", query }, error);
+      return null;
+    },
+  );
+
+  return response?.meta?.pagination?.total ?? 0;
 }
 
 export async function restoreReportedDeal(id: string) {
@@ -387,28 +750,18 @@ export async function restoreReportedDeal(id: string) {
   return response.data ? toDeal(response.data) : null;
 }
 
-function getVoteDelta(direction: DealVoteDirection | null) {
-  if (direction === "up") {
-    return 1;
-  }
-
-  if (direction === "down") {
-    return -1;
-  }
-
-  return 0;
-}
-
 async function getDealVoteForViewer(dealId: string, viewerId: string) {
   const query = new URLSearchParams({
-    "filters[deal][documentId][$eq]": dealId,
+    "filters[dealDocumentId][$eq]": dealId,
     "filters[viewerId][$eq]": viewerId,
     "pagination[pageSize]": "1",
-    populate: "deal",
   });
 
   const response = await strapiRequest<StrapiListResponse<StrapiDealVote>>("/api/deal-votes", { query }).catch(
-    () => null,
+    (error) => {
+      logDataFetchError({ functionName: "getDealVoteForViewer", endpoint: "/api/deal-votes", query }, error);
+      return null;
+    },
   );
   const vote = response?.data[0];
 
@@ -429,61 +782,44 @@ async function getDealVoteForViewer(dealId: string, viewerId: string) {
   };
 }
 
-export async function voteDeal(id: string, viewerId: string, direction: DealVoteDirection) {
-  const deal = await getDealById(id);
+function isUniqueConstraintError(error: unknown) {
+  const candidate = error as { code?: string; errno?: number; message?: string };
 
-  if (!deal) {
+  return (
+    candidate?.code === "23505" ||
+    candidate?.code === "SQLITE_CONSTRAINT" ||
+    candidate?.errno === 1062 ||
+    /unique|duplicate/i.test(candidate?.message ?? "")
+  );
+}
+
+export async function voteDeal(id: string, viewerId: string, direction: DealVoteDirection) {
+  // Voting is handled by Strapi so the vote row and score update share one database transaction.
+  const response = await strapiRequest<StrapiDealVoteResponse>(`/api/deals/${id}/vote`, {
+    method: "POST",
+    requireToken: true,
+    body: {
+      viewerId,
+      direction,
+    },
+  }).catch((error) => {
+    if (error instanceof Error && error.message.toLowerCase().includes("not found")) {
+      return null;
+    }
+
+    throw error;
+  });
+
+  if (!response) {
     return null;
   }
 
-  const existingVote = await getDealVoteForViewer(id, viewerId);
-  const nextDirection = existingVote?.direction === direction ? null : direction;
-  const scoreDelta = getVoteDelta(nextDirection) - getVoteDelta(existingVote?.direction ?? null);
-  const nextScore = deal.score + scoreDelta;
-
-  if (existingVote && nextDirection === null) {
-    await strapiRequest(`/api/deal-votes/${existingVote.id}`, {
-      method: "DELETE",
-      requireToken: true,
-    });
-  } else if (existingVote) {
-    await strapiRequest(`/api/deal-votes/${existingVote.id}`, {
-      method: "PUT",
-      requireToken: true,
-      body: {
-        data: {
-          direction: nextDirection,
-        },
-      },
-    });
-  } else {
-    await strapiRequest("/api/deal-votes", {
-      method: "POST",
-      requireToken: true,
-      body: {
-        data: {
-          deal: id,
-          viewerId,
-          direction,
-        },
-      },
-    });
-  }
-
-  const updatedDealResponse = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`, {
-    method: "PUT",
-    requireToken: true,
-    body: {
-      data: {
-        score: nextScore,
-      },
-    },
-  });
+  const deal = await getDealById(id);
 
   return {
-    deal: updatedDealResponse.data ? toDeal(updatedDealResponse.data) : { ...deal, score: nextScore },
-    didVote: nextDirection !== null,
-    viewerVote: nextDirection,
+    deal: deal ?? ({ id, score: response.data.score } as Deal),
+    didVote: response.data.didVote,
+    viewerVote: response.data.viewerVote,
   };
 }
 

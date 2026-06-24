@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Deal Rakyat</title>
+  <desc id="desc">Malaysia-focused community deals by Deal Rakyat.</desc>
+  <rect width="1200" height="630" fill="#020617"/>
+  <path d="M0 442C163 370 291 396 436 453c150 59 281 93 449 28 112-43 210-49 315-20v169H0Z" fill="#0f172a"/>
+  <circle cx="1032" cy="116" r="118" fill="#dc115e" opacity=".22"/>
+  <circle cx="106" cy="526" r="148" fill="#e6f24f" opacity=".12"/>
+  <rect x="84" y="84" width="1032" height="462" rx="36" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+  <text x="126" y="226" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="800">Deal Rakyat</text>
+  <text x="130" y="296" fill="#e6f24f" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700">Need a better deal? See the DR.</text>
+  <text x="130" y="374" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="500">Malaysia-focused community deals, vouchers,</text>
+  <text x="130" y="420" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="500">price drops, and shopping tips.</text>
+  <rect x="130" y="470" width="248" height="54" rx="27" fill="#dc115e"/>
+  <text x="164" y="507" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700">dealrakyat.my</text>
+</svg>

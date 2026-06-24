@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { deleteDealAction, moderateDealAction, restoreReportedDealAction } from "@/app/actions";
+import { formatMyrPrice } from "@/lib/formatters";
 
 type DealStatus = "pending" | "approved" | "rejected";
 type ModerationFilter = "all" | DealStatus | "expired" | "reported" | "risk";
@@ -67,17 +68,6 @@ const filterOrder: ModerationFilter[] = [
   "risk",
   "expired",
 ];
-
-/**
- * Formats a numeric deal price as Malaysian Ringgit.
- */
-const formatPrice = (value: number) => {
-  return new Intl.NumberFormat("en-MY", {
-    style: "currency",
-    currency: "MYR",
-    maximumFractionDigits: 0,
-  }).format(value);
-};
 
 /**
  * Formats a submitted timestamp for display in the admin moderation table.
@@ -373,7 +363,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                     >
                       {deal.title}
                     </Link>
-                    <p className="mt-2 text-sm text-slate-600">{formatPrice(deal.price)} - {deal.store}</p>
+                    <p className="mt-2 text-sm text-slate-600">{formatMyrPrice(deal.price, 0)} - {deal.store}</p>
                   </div>
                   <div className="space-y-2 text-sm text-slate-700">
                     <div className="hidden text-slate-500 sm:block">Store</div>

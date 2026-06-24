@@ -1,0 +1,22 @@
+{
+  "kind": "collectionType",
+  "collectionName": "follows",
+  "info": {
+    "singularName": "follow",
+    "pluralName": "follows",
+    "displayName": "Follow"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "followerUserId": {
+      "type": "string",
+      "required": true
+    },
+    "followingUserId": {
+      "type": "string",
+      "required": true
+    }
+  }
+}
