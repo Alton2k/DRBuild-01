@@ -14,6 +14,7 @@ import {
   type MouseEvent,
 } from "react";
 import { signOutAction } from "@/app/auth/actions";
+import { saveAccountSettingsAction } from "@/app/settings/actions";
 import type { DealCategory } from "@/lib/categories";
 
 type ThemeMode = "auto" | "dark" | "light";
@@ -82,6 +83,10 @@ function getStoredThemeMode(): ThemeMode {
 
 function applyThemeMode(mode: ThemeMode) {
   document.documentElement.dataset.theme = getResolvedTheme(mode);
+}
+
+function toSettingsTheme(mode: ThemeMode) {
+  return mode === "auto" ? "system" : mode;
 }
 
 function subscribeToThemeModeChanges(onStoreChange: () => void) {
@@ -167,7 +172,7 @@ export default function TopNavClient({
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-    if (userEmail && getStoredThemeMode() !== initialThemeMode) {
+    if (!localStorage.getItem(themeStorageKey)) {
       localStorage.setItem(themeStorageKey, initialThemeMode);
       window.dispatchEvent(new Event(themeModeChangedEventName));
     }
@@ -185,7 +190,7 @@ export default function TopNavClient({
     return () => {
       mediaQuery.removeEventListener("change", handleSystemThemeChange);
     };
-  }, [initialThemeMode, themeMode, userEmail]);
+  }, [initialThemeMode, themeMode]);
 
   useEffect(() => {
     if (isMenuOpen) {
@@ -395,6 +400,10 @@ export default function TopNavClient({
     localStorage.setItem(themeStorageKey, mode);
     window.dispatchEvent(new Event(themeModeChangedEventName));
     applyThemeMode(mode);
+
+    if (userEmail) {
+      void saveAccountSettingsAction({ theme: toSettingsTheme(mode) });
+    }
   };
 
   const authHref = `/auth?next=${encodeURIComponent(authNext)}`;
@@ -723,18 +732,18 @@ export default function TopNavClient({
                     const isSelected = category.name === megaMenuCategory.name;
 
                     return (
-                      <button
+                      <Link
                         key={category.name}
-                        type="button"
+                        href={createCategoryHref(category.name)}
                         onMouseEnter={() => setMegaMenuCategoryName(category.name)}
                         onFocus={() => setMegaMenuCategoryName(category.name)}
-                        onClick={() => setMegaMenuCategoryName(category.name)}
+                        onClick={() => setIsCategoryMegaMenuOpen(false)}
                         className={`category-mega-menu-category ${
                           isSelected ? "is-active" : ""
                         }`}
                       >
                         {category.name}
-                      </button>
+                      </Link>
                     );
                   })}
                 </div>

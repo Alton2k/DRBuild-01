@@ -156,6 +156,8 @@ export default async function PublicProfilePage({
             savedDealIds={Array.from(savedDealIds)}
             showSaved={settings.toggles.showSavedDeals}
             showStats={settings.toggles.showActivityStats}
+            showCommentStat={false}
+            showFollowingStat={false}
             stats={{
               upvotesGiven: voteStats.upvotesGiven,
               upvotesReceived: voteStats.upvotesReceived,

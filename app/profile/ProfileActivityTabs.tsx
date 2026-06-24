@@ -71,6 +71,8 @@ export default function ProfileActivityTabs({
   stats,
   showSaved = true,
   showStats = true,
+  showCommentStat = true,
+  showFollowingStat = true,
 }: {
   postedDeals: Deal[];
   savedDeals: SavedDeal[];
@@ -87,6 +89,8 @@ export default function ProfileActivityTabs({
   };
   showSaved?: boolean;
   showStats?: boolean;
+  showCommentStat?: boolean;
+  showFollowingStat?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<ProfileTab>("posted");
   const [postedPage, setPostedPage] = useState(1);
@@ -131,18 +135,21 @@ export default function ProfileActivityTabs({
       <div className="profile-activity-panel px-4 pb-2 sm:px-5">
         {showStats ? (
         <section className="pb-5">
-          <dl className="grid grid-cols-3 lg:grid-cols-6">
+          <dl className="flex flex-wrap justify-center">
             {[
-              { label: "Upvotes given", value: stats.upvotesGiven, icon: "up-given" as const },
               { label: "Upvotes received", value: stats.upvotesReceived, icon: "up-received" as const },
-              { label: "Comments", value: stats.comments, icon: "comments" as const },
+              showCommentStat
+                ? { label: "Comments", value: stats.comments, icon: "comments" as const }
+                : null,
               { label: "Deals posted", value: stats.dealsPosted, icon: "deals" as const },
               { label: "Followers", value: stats.followers, icon: "followers" as const },
-              { label: "Following", value: stats.following, icon: "following" as const },
-            ].map((stat) => (
+              showFollowingStat
+                ? { label: "Following", value: stats.following, icon: "following" as const }
+                : null,
+            ].filter((stat): stat is { label: string; value: number; icon: StatIconName } => Boolean(stat)).map((stat) => (
               <div
                 key={stat.label}
-                className="py-3 text-center"
+                className="min-w-[8.5rem] px-3 py-3 text-center"
               >
                 <div className="mx-auto flex w-fit items-center gap-1.5 text-slate-500">
                   <StatIcon name={stat.icon} />

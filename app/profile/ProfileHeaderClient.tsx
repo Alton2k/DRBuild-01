@@ -11,6 +11,7 @@ type ProfileHeaderClientProps = {
   initialBio: string;
   joinedDate: string;
   showActions?: boolean;
+  editProfileHref?: string;
   followState?: {
     userId: string;
     initialIsFollowing: boolean;
@@ -36,6 +37,7 @@ export default function ProfileHeaderClient({
   initialBio,
   joinedDate,
   showActions = true,
+  editProfileHref,
   followState,
 }: ProfileHeaderClientProps) {
   const [isPending, startTransition] = useTransition();
@@ -43,6 +45,17 @@ export default function ProfileHeaderClient({
   const [message, setMessage] = useState("");
   const canRenderFollow = Boolean(followState);
   const followDisabled = isPending || Boolean(followState && !followState.allowFollowers && !isFollowing);
+  const avatarClassName = `flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border text-2xl font-black shadow-sm sm:h-28 sm:w-28 sm:text-3xl ${
+    initialAvatarUrl
+      ? "border-slate-300 bg-transparent"
+      : "border-[#dc115e]/20 bg-[#dc115e] text-white"
+  }`;
+  const avatarContent = initialAvatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={initialAvatarUrl} alt="" className="h-full w-full object-cover" />
+  ) : (
+    getInitials(initialDisplayName, initialEmail)
+  );
 
   function handleFollowClick() {
     if (!followState) {
@@ -77,20 +90,34 @@ export default function ProfileHeaderClient({
     <section className="p-4 sm:p-5">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div
-            className={`flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border text-2xl font-black shadow-sm sm:h-28 sm:w-28 sm:text-3xl ${
-              initialAvatarUrl
-                ? "border-slate-300 bg-transparent"
-                : "border-[#dc115e]/20 bg-[#dc115e] text-white"
-            }`}
-          >
-            {initialAvatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={initialAvatarUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              getInitials(initialDisplayName, initialEmail)
-            )}
-          </div>
+          {editProfileHref ? (
+            <Link
+              href={editProfileHref}
+              aria-label="Edit profile"
+              className="group relative block h-20 w-20 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 sm:h-28 sm:w-28"
+            >
+              <span className={`${avatarClassName} transition group-hover:brightness-95`}>
+                {avatarContent}
+              </span>
+              <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#dc115e] text-white shadow-sm transition group-hover:bg-[#c70f55] sm:h-8 sm:w-8">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2.2"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+                </svg>
+              </span>
+            </Link>
+          ) : (
+            <div className={avatarClassName}>{avatarContent}</div>
+          )}
           <div>
             <div className="flex flex-wrap items-start gap-1.5">
               <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
@@ -100,9 +127,9 @@ export default function ProfileHeaderClient({
                 Member
               </span>
             </div>
-            <p className="mt-1 max-w-xl truncate text-xs font-medium text-slate-500">
+            <p className="mt-1 max-w-xl truncate text-sm font-medium leading-6 text-slate-600">
               {joinedDate ? `Joined ${joinedDate}` : "Member profile"}
-              {initialBio ? (
+              {showActions && initialBio ? (
                 <>
                   <span className="px-1.5" aria-hidden="true">
                     |
@@ -152,6 +179,11 @@ export default function ProfileHeaderClient({
                 Account Settings
               </Link>
             </div>
+            ) : null}
+            {!showActions && initialBio ? (
+              <p className="mt-3 max-w-xl text-sm font-medium leading-6 text-slate-600">
+                {initialBio}
+              </p>
             ) : null}
             {canRenderFollow ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">

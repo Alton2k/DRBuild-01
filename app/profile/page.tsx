@@ -93,6 +93,8 @@ export default async function ProfilePage() {
           initialAvatarUrl={settings.profile.avatarUrl}
           initialBio={settings.profile.bio}
           joinedDate={joinedDate}
+          showActions={false}
+          editProfileHref="/settings#profile"
         />
 
         <div className="mx-4 border-t border-slate-200 sm:mx-5" aria-hidden="true" />

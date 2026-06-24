@@ -72,10 +72,11 @@ function createThemeScript(initialThemeMode: ThemeMode | null) {
     var themeKey = "dealmy_theme";
     var ambientKey = "dealmy_ambient";
     var serverTheme = ${serializedThemeMode};
-    if (serverTheme) {
+    var existingTheme = localStorage.getItem(themeKey);
+    if (!existingTheme && serverTheme) {
       localStorage.setItem(themeKey, serverTheme);
     }
-    var stored = serverTheme || localStorage.getItem(themeKey) || "auto";
+    var stored = existingTheme || serverTheme || "auto";
     var ambient = localStorage.getItem(ambientKey) === "off" ? "off" : "on";
     var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     var resolved = stored === "dark" || (stored === "auto" && prefersDark) ? "dark" : "light";
