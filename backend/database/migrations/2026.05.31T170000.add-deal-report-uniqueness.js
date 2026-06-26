@@ -77,6 +77,10 @@ async function resyncReportCounts(knex) {
 
 module.exports = {
   async up(knex) {
+    if (!(await knex.schema.hasTable(dealReportsTable))) {
+      return;
+    }
+
     const hasDealDocumentId = await knex.schema.hasColumn(dealReportsTable, "deal_document_id");
 
     if (!hasDealDocumentId) {
@@ -97,6 +101,14 @@ module.exports = {
   },
 
   async down(knex) {
+    if (!(await knex.schema.hasTable(dealReportsTable))) {
+      return;
+    }
+
+    if (!(await hasIndex(knex, dealReportsTable, uniqueIndexName))) {
+      return;
+    }
+
     await knex.schema.alterTable(dealReportsTable, (table) => {
       table.dropUnique(["deal_document_id", "viewer_id"], uniqueIndexName);
     });

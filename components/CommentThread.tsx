@@ -35,6 +35,7 @@ const maxPreviewReplies = 3;
 const initialCommentState: CommentActionState = {
   ok: false,
   message: "",
+  postedAt: undefined,
 };
 
 function formatCommentTime(value: string) {
@@ -160,15 +161,17 @@ function CommentForm({
   const postComment = createCommentAction.bind(null, dealId);
   const [state, formAction, isPending] = useActionState(postComment, initialCommentState);
   const formRef = useRef<HTMLFormElement>(null);
+  const lastHandledPostRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    if (!state.ok) {
+    if (!state.ok || !state.postedAt || lastHandledPostRef.current === state.postedAt) {
       return;
     }
 
+    lastHandledPostRef.current = state.postedAt;
     formRef.current?.reset();
     onPosted?.();
-  }, [onPosted, state.ok]);
+  }, [onPosted, state.ok, state.postedAt]);
 
   return (
     <form ref={formRef} action={formAction} className="grid gap-2">

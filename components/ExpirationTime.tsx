@@ -35,11 +35,28 @@ export default function ExpirationTime({
       return undefined;
     }
 
-    const tick = () => setNow(Date.now());
-    const interval = window.setInterval(tick, 1000);
+    let interval: number | undefined;
+    const tick = () => {
+      const currentTime = Date.now();
+      setNow(currentTime);
+
+      if (currentTime >= targetTime && interval !== undefined) {
+        window.clearInterval(interval);
+        interval = undefined;
+      }
+    };
+
     tick();
 
-    return () => window.clearInterval(interval);
+    if (Date.now() < targetTime) {
+      interval = window.setInterval(tick, 1000);
+    }
+
+    return () => {
+      if (interval !== undefined) {
+        window.clearInterval(interval);
+      }
+    };
   }, [targetTime]);
 
   if (!Number.isFinite(targetTime)) {

@@ -84,6 +84,10 @@ async function resyncDealScores(knex) {
 
 module.exports = {
   async up(knex) {
+    if (!(await knex.schema.hasTable(dealVotesTable))) {
+      return;
+    }
+
     const hasDealDocumentId = await knex.schema.hasColumn(dealVotesTable, "deal_document_id");
 
     if (!hasDealDocumentId) {
@@ -104,6 +108,14 @@ module.exports = {
   },
 
   async down(knex) {
+    if (!(await knex.schema.hasTable(dealVotesTable))) {
+      return;
+    }
+
+    if (!(await hasIndex(knex, dealVotesTable, uniqueIndexName))) {
+      return;
+    }
+
     await knex.schema.alterTable(dealVotesTable, (table) => {
       table.dropUnique(["deal_document_id", "viewer_id"], uniqueIndexName);
     });

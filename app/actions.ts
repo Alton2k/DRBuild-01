@@ -72,6 +72,7 @@ export type ReportDealActionState = {
 export type CommentActionState = {
   ok: boolean;
   message: string;
+  postedAt?: number;
 };
 
 export type SaveDealActionResult = {
@@ -783,6 +784,7 @@ export async function createCommentAction(
   return {
     ok: true,
     message: "Comment posted.",
+    postedAt: Date.now(),
   };
 }
 
