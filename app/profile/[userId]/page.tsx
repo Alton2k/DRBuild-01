@@ -6,8 +6,9 @@ import {
   getDealVoteDirectionsByDealIds,
   getProfileVoteStats,
 } from "@/lib/deals";
-import { getCommentsByAuthorUserIdResult } from "@/lib/comments";
+import { getCommentCountsByDealIds, getCommentsByAuthorUserIdResult } from "@/lib/comments";
 import { getSavedDealsForUserResult, getSavedDealIdsForUser } from "@/lib/savedDeals";
+import { getDealVoteViewerAliases, getDealVoteViewerId } from "@/lib/dealVoteIdentity";
 import { createDefaultAccountSettings } from "@/lib/accountSettings";
 import { getAccountSettingsByProfileUserName, getAccountSettingsForUser } from "@/lib/userSettings";
 import { getFollowSummaryForUser } from "@/lib/follows";
@@ -94,6 +95,7 @@ export default async function PublicProfilePage({
   const savedDealsResult = settings.toggles.showSavedDeals
     ? await getSavedDealsForUserResult(resolvedUserId)
     : { ok: true as const, data: [] };
+  const visibleComments = settings.toggles.showComments ? comments : [];
   const savedDeals = savedDealsResult.ok
     ? savedDealsResult.data.filter((savedDeal) => savedDeal.deal.status === "approved")
     : [];
@@ -101,16 +103,30 @@ export default async function PublicProfilePage({
     ...postedDeals.map((deal) => deal.id),
     ...savedDeals.map((savedDeal) => savedDeal.deal.id),
   ]));
-  const [viewerVotes, voteStats, savedDealIds, followSummary] = await Promise.all([
-    getDealVoteDirectionsByDealIds(profileDealIds, dealViewerId),
+  const dealVoteViewerId = getDealVoteViewerId({ userId: currentUser?.id, anonymousViewerId: dealViewerId });
+  const dealVoteViewerAliases = getDealVoteViewerAliases({ userId: currentUser?.id, anonymousViewerId: dealViewerId });
+  const [viewerVotes, voteStats, savedDealIds, followSummary, profileCommentCounts] = await Promise.all([
+    getDealVoteDirectionsByDealIds(profileDealIds, dealVoteViewerId, currentUser?.id, dealVoteViewerAliases),
     settings.toggles.showActivityStats
-      ? getProfileVoteStats(profileDealIds, dealViewerId)
+      ? getProfileVoteStats(profileDealIds, dealVoteViewerId, currentUser?.id)
       : Promise.resolve({ upvotesGiven: 0, upvotesReceived: 0 }),
     currentUser ? getSavedDealIdsForUser(currentUser.id) : Promise.resolve(new Set<string>()),
     settings.toggles.showActivityStats || currentUser
       ? getFollowSummaryForUser(resolvedUserId, currentUser?.id)
       : Promise.resolve({ followers: 0, following: 0, viewerIsFollowing: false }),
+    getCommentCountsByDealIds(profileDealIds),
   ]);
+  const postedDealsWithCommentCounts = postedDeals.map((deal) => ({
+    ...deal,
+    commentCount: profileCommentCounts.get(deal.id) ?? deal.commentCount,
+  }));
+  const savedDealsWithCommentCounts = savedDeals.map((savedDeal) => ({
+    ...savedDeal,
+    deal: {
+      ...savedDeal.deal,
+      commentCount: profileCommentCounts.get(savedDeal.deal.id) ?? savedDeal.deal.commentCount,
+    },
+  }));
   const initialVotes = Object.fromEntries(viewerVotes);
   const joinedDate = settings.toggles.showJoinDate ? formatJoinedDate(publicUser?.joinedAt) : "";
 
@@ -138,7 +154,7 @@ export default async function PublicProfilePage({
               Submitted deals are temporarily unavailable.
             </div>
           ) : null}
-          {!commentsResult.ok ? (
+          {settings.toggles.showComments && !commentsResult.ok ? (
             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
               Comment history is temporarily unavailable.
             </div>
@@ -149,19 +165,23 @@ export default async function PublicProfilePage({
             </div>
           ) : null}
           <ProfileActivityTabs
-            postedDeals={postedDeals}
-            savedDeals={savedDeals}
-            comments={comments}
+            postedDeals={postedDealsWithCommentCounts}
+            savedDeals={savedDealsWithCommentCounts}
+            comments={visibleComments}
             initialVotes={initialVotes}
             savedDealIds={Array.from(savedDealIds)}
+            voteStorageScope={dealVoteViewerId}
             showSaved={settings.toggles.showSavedDeals}
+            showComments={settings.toggles.showComments}
+            savedIsPrivate={!settings.toggles.showSavedDeals}
+            commentsArePrivate={!settings.toggles.showComments}
             showStats={settings.toggles.showActivityStats}
-            showCommentStat={false}
+            showCommentStat={settings.toggles.showComments}
             showFollowingStat={false}
             stats={{
               upvotesGiven: voteStats.upvotesGiven,
               upvotesReceived: voteStats.upvotesReceived,
-              comments: comments.length,
+              comments: visibleComments.length,
               dealsPosted: postedDeals.length,
               followers: followSummary.followers,
               following: followSummary.following,

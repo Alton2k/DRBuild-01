@@ -616,27 +616,113 @@ html {
 
 .category-mega-menu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 0.25rem 0.85rem;
+  grid-auto-rows: minmax(0, 1fr);
+  grid-template-columns: repeat(var(--category-grid-columns, 4), minmax(0, 1fr));
+  gap: 0.75rem;
+  min-height: var(--category-grid-min-height, 18rem);
 }
 
 .category-mega-menu-subcategory {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid rgb(226 232 240 / 0.95);
   border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
   color: #334155;
+  display: flex;
+  flex-direction: column;
   font-size: 0.88rem;
-  font-weight: 650;
-  padding: 0.42rem 0.6rem;
+  font-weight: 800;
+  gap: 0.55rem;
+  justify-content: center;
+  min-height: 0;
+  padding: 0.8rem;
   text-decoration: none;
+  text-align: center;
   transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.category-mega-menu-subcategory-mark {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid rgb(203 213 225 / 0.9);
+  border-radius: 0.35rem;
+  color: var(--brand);
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 950;
+  height: 2rem;
+  justify-content: center;
+  line-height: 1;
+  text-transform: uppercase;
+  width: 2rem;
+}
+
+.category-mega-menu-subcategory-label {
+  display: -webkit-box;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.category-mega-menu-subcategory:hover,
+.category-mega-menu-subcategory:focus-visible,
+.category-mega-menu-subcategory.is-active {
+  background: #ffffff;
+  border-color: rgb(220 17 94 / 0.55);
+  box-shadow: 0 10px 24px rgb(15 23 42 / 0.08);
+  color: var(--brand);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.category-mobile-subcategory-tile {
+  align-items: center;
+  border: 1px solid rgb(226 232 240 / 0.95);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 0.4rem;
+  justify-content: center;
+  min-height: 5.75rem;
+  padding: 0.7rem 0.5rem;
+  text-align: center;
+  transition:
+    border-color 160ms ease,
     color 160ms ease,
     background-color 160ms ease;
 }
 
-.category-mega-menu-subcategory:hover,
-.category-mega-menu-subcategory:focus-visible {
-  background: rgb(15 23 42 / 0.045);
-  color: var(--brand);
+.category-mobile-subcategory-tile:hover,
+.category-mobile-subcategory-tile:focus-visible,
+.category-mobile-subcategory-tile.sidebar-menu-action-active {
+  background: rgb(220 17 94 / 0.06);
+  border-color: rgb(220 17 94 / 0.34);
   outline: none;
+}
+
+.category-mobile-subcategory-mark {
+  align-items: center;
+  border: 1px solid rgb(203 213 225 / 0.9);
+  border-radius: 0.35rem;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 950;
+  height: 1.65rem;
+  justify-content: center;
+  line-height: 1;
+  text-transform: uppercase;
+  width: 1.65rem;
 }
 
 @media (max-width: 767px) {
@@ -714,13 +800,40 @@ html {
 }
 
 :root[data-theme="dark"] .category-mega-menu-subcategory {
+  background: #111827;
+  border-color: #334155;
   color: #cbd5e1;
 }
 
 :root[data-theme="dark"] .category-mega-menu-subcategory:hover,
 :root[data-theme="dark"] .category-mega-menu-subcategory:focus-visible {
-  background: rgb(2 6 23 / 0.38);
+  background: #1e293b;
+  border-color: rgb(220 17 94 / 0.5);
   color: #ffffff;
+}
+
+:root[data-theme="dark"] .category-mega-menu-subcategory.is-active {
+  background: #1e293b;
+  border-color: rgb(220 17 94 / 0.5);
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .category-mega-menu-subcategory-mark,
+:root[data-theme="dark"] .category-mobile-subcategory-mark {
+  background: #0f172a;
+  border-color: #475569;
+  color: #f472b6;
+}
+
+:root[data-theme="dark"] .category-mobile-subcategory-tile {
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .category-mobile-subcategory-tile:hover,
+:root[data-theme="dark"] .category-mobile-subcategory-tile:focus-visible,
+:root[data-theme="dark"] .category-mobile-subcategory-tile.sidebar-menu-action-active {
+  background: rgb(220 17 94 / 0.14);
+  border-color: rgb(220 17 94 / 0.44);
 }
 
 :root[data-theme="dark"] .topbar-account-action:hover,
@@ -3489,6 +3602,10 @@ html {
 .deal-detail-title,
 .deal-detail-section-title {
   color: var(--text);
+}
+
+.deal-detail-title {
+  overflow-wrap: anywhere;
 }
 
 .deal-detail-price {

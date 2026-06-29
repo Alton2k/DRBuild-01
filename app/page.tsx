@@ -13,9 +13,10 @@ import {
   type PaginatedDeals,
 } from "@/lib/deals";
 import { getDealSavingsAmount } from "@/lib/dealDisplay";
-import { getApprovedDealCommentCountsInRangeResult } from "@/lib/comments";
+import { getApprovedDealCommentCountsInRangeResult, getCommentCountsByDealIds } from "@/lib/comments";
 import { getCurrentUser } from "@/lib/auth";
 import { getSavedDealIdsForUser } from "@/lib/savedDeals";
+import { getDealVoteViewerAliases, getDealVoteViewerId } from "@/lib/dealVoteIdentity";
 import { formatMyrPrice } from "@/lib/formatters";
 
 export const dynamic = "force-dynamic";
@@ -491,10 +492,17 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
   const { deals: todayDropDeals } = todayDropDealsResult.ok ? todayDropDealsResult.data : getUnavailableDealsPage(1, 100);
   const visibleDeals = deals;
   const visibleDealIds = visibleDeals.map((deal) => deal.id);
-  const [viewerVotes, savedDealIds] = await Promise.all([
-    getDealVoteDirectionsByDealIds(visibleDealIds, viewerId),
+  const dealVoteViewerId = getDealVoteViewerId({ userId: user?.id, anonymousViewerId: viewerId });
+  const dealVoteViewerAliases = getDealVoteViewerAliases({ userId: user?.id, anonymousViewerId: viewerId });
+  const [viewerVotes, savedDealIds, visibleCommentCounts] = await Promise.all([
+    getDealVoteDirectionsByDealIds(visibleDealIds, dealVoteViewerId, user?.id, dealVoteViewerAliases),
     user ? getSavedDealIdsForUser(user.id) : Promise.resolve(new Set<string>()),
+    getCommentCountsByDealIds(visibleDealIds),
   ]);
+  const visibleDealsWithCommentCounts = visibleDeals.map((deal) => ({
+    ...deal,
+    commentCount: visibleCommentCounts.get(deal.id) ?? deal.commentCount,
+  }));
   const topDealToday = topDealsToday[0] ?? null;
   const topDealThisWeek = topDealsThisWeek[0] ?? null;
   const biggestDropDeal = getBiggestSavingsDeal(todayDropDeals);
@@ -791,16 +799,17 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                   Please try again later.
                 </p>
               </div>
-            ) : visibleDeals.length > 0 ? (
+            ) : visibleDealsWithCommentCounts.length > 0 ? (
               <div className="home-deal-grid grid gap-4">
-                {visibleDeals.map((deal) => (
+                {visibleDealsWithCommentCounts.map((deal) => (
                   <HomeDealCard
                     key={deal.id}
                     deal={deal}
-                    commentCount={deal.commentCount ?? 0}
+                    commentCount={deal.commentCount}
                     initialVote={viewerVotes.get(deal.id) ?? null}
                     initialSaved={savedDealIds.has(deal.id)}
                     isSignedIn={Boolean(user)}
+                    voteStorageScope={dealVoteViewerId}
                   />
                 ))}
               </div>

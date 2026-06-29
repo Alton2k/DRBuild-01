@@ -55,6 +55,13 @@ export default factories.createCoreController("api::deal.deal", ({ strapi }) => 
   async vote(ctx) {
     const dealParam = String(ctx.params.id ?? "").trim();
     const viewerId = typeof ctx.request.body?.viewerId === "string" ? ctx.request.body.viewerId.trim() : "";
+    const userId = typeof ctx.request.body?.userId === "string" ? ctx.request.body.userId.trim() : "";
+    const viewerAliases = Array.isArray(ctx.request.body?.viewerAliases)
+      ? ctx.request.body.viewerAliases
+          .filter((value): value is string => typeof value === "string")
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : [];
     const requestedDirection = getVoteDirectionFromBody(ctx.request.body);
 
     if (!dealParam) {
@@ -89,12 +96,24 @@ export default factories.createCoreController("api::deal.deal", ({ strapi }) => 
       }
 
       const dealDocumentId = String(deal.document_id);
-      const existingVote = await strapi.db.query("api::deal-vote.deal-vote").findOne({
-        where: {
-          dealDocumentId,
-          viewerId,
-        },
-      });
+      const viewerIds = Array.from(new Set([viewerId, ...viewerAliases].filter(Boolean)));
+      const userVote = userId
+        ? await strapi.db.query("api::deal-vote.deal-vote").findOne({
+            where: {
+              dealDocumentId,
+              userId,
+            },
+          })
+        : null;
+      const viewerVote = userVote
+        ? null
+        : await strapi.db.query("api::deal-vote.deal-vote").findOne({
+            where: {
+              dealDocumentId,
+              viewerId: { $in: viewerIds },
+            },
+          });
+      const existingVote = userVote ?? viewerVote;
       const existingDirection =
         existingVote?.direction === "up" || existingVote?.direction === "down" ? existingVote.direction : null;
       const nextDirection = requestedDirection === null || existingDirection === requestedDirection
@@ -110,7 +129,11 @@ export default factories.createCoreController("api::deal.deal", ({ strapi }) => 
       } else if (existingVote && nextDirection) {
         await strapi.db.query("api::deal-vote.deal-vote").update({
           where: { id: existingVote.id },
-          data: { direction: nextDirection },
+          data: {
+            direction: nextDirection,
+            viewerId,
+            ...(userId ? { userId } : {}),
+          },
         });
       } else if (nextDirection) {
         try {
@@ -120,6 +143,7 @@ export default factories.createCoreController("api::deal.deal", ({ strapi }) => 
               deal: deal.id,
               dealDocumentId,
               viewerId,
+              ...(userId ? { userId } : {}),
               direction: nextDirection,
             },
           });
@@ -131,7 +155,7 @@ export default factories.createCoreController("api::deal.deal", ({ strapi }) => 
           const duplicateVote = await strapi.db.query("api::deal-vote.deal-vote").findOne({
             where: {
               dealDocumentId,
-              viewerId,
+              ...(userId ? { userId } : { viewerId }),
             },
           });
 

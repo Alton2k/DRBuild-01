@@ -71,6 +71,7 @@ function splitToggles(toggles: Record<ToggleKey, boolean>) {
       showJoinDate: toggles.showJoinDate,
       showActivityStats: toggles.showActivityStats,
       showSavedDeals: toggles.showSavedDeals,
+      showComments: toggles.showComments,
       allowFollowers: toggles.allowFollowers,
     },
   };

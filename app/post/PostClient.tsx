@@ -22,6 +22,7 @@ import { detectDealCategory } from "@/lib/categoryDetection";
 import { categoryOptions, getCategoryByName } from "@/lib/categories";
 import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
 import { isProcessableDealUrl, validateDealUrl } from "@/lib/dealUrlSecurity";
+import { dealTitleMaxCharacters, getDealTitleValidationError } from "@/lib/dealTitleValidation";
 import { formatMyrPrice } from "@/lib/formatters";
 
 type DealFormState = {
@@ -923,7 +924,7 @@ function getSubmissionOutcome(message: string) {
 
   return {
     label: "Waiting for moderation",
-    title: "Your deal is in the review queue",
+    title: "Your deal is now waiting to be review",
     description: "",
     tone: "slate",
   };
@@ -964,10 +965,9 @@ function validateForm(
 ): FormErrors {
   const errors: FormErrors = {};
 
-  if (!values.title.trim()) {
-    errors.title = "Add a deal title.";
-  } else if (values.title.trim().length < 8) {
-    errors.title = "Make the title more specific.";
+  const titleError = getDealTitleValidationError(values.title);
+  if (titleError) {
+    errors.title = titleError === "Deal title is required." ? "Add a deal title." : titleError;
   }
 
   if (!values.url.trim()) {
@@ -1629,6 +1629,7 @@ export default function PostClient() {
   const hasDuplicateMatch = Boolean(duplicateCheck?.match);
   const canSubmit = !isPending && !isFetching && !hasDuplicateMatch;
   const successOutcome = getSubmissionOutcome(actionState.message);
+  const canViewSubmittedDeal = actionState.dealStatus === "approved" && Boolean(actionState.dealId);
   const canShowDuplicateCheck = isValidUrl(form.url);
   const activeExpirationValue = showExpirationPicker ? draftExpiresAt : form.expiresAt;
   const selectedExpirationDate = parseDateTimeInputValue(activeExpirationValue);
@@ -1664,7 +1665,7 @@ export default function PostClient() {
                   }`}
                 >
                 <div className="px-6 py-6 sm:px-7">
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="post-success-kicker text-xs font-bold uppercase tracking-[0.24em]">
                         {successOutcome.label}
@@ -1684,8 +1685,12 @@ export default function PostClient() {
                   </div>
                 </div>
                 <div className="post-success-actions px-6 pb-6 pt-4 sm:px-7">
-                  <div className="grid gap-3.5 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                    {actionState.dealId ? (
+                  <div
+                    className={`grid gap-3.5 sm:items-center ${
+                      canViewSubmittedDeal ? "sm:grid-cols-3" : "sm:grid-cols-2"
+                    }`}
+                  >
+                    {canViewSubmittedDeal ? (
                       <Link
                         href={`/deal/${actionState.dealId}`}
                         className="post-success-primary-action inline-flex h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
@@ -1697,13 +1702,13 @@ export default function PostClient() {
                     <button
                       type="button"
                       onClick={handlePostAnother}
-                      className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+                      className="post-secondary-button inline-flex h-12 w-full items-center justify-center rounded-full border px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
                     >
                       Post another deal
                     </button>
                     <Link
                       href="/"
-                      className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+                      className="post-secondary-button inline-flex h-12 w-full items-center justify-center rounded-full border px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
                     >
                       Go home
                     </Link>
@@ -1821,6 +1826,7 @@ export default function PostClient() {
                     value={form.title}
                     placeholder="Brand, item name, and key details"
                     required
+                    maxLength={dealTitleMaxCharacters}
                     error={combinedErrors.title}
                     disabled={isPending}
                     onChange={(value) => handleChange("title", value)}

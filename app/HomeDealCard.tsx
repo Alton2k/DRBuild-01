@@ -31,12 +31,14 @@ export default function HomeDealCard({
   initialVote,
   initialSaved,
   isSignedIn,
+  voteStorageScope,
 }: {
   deal: Deal;
   commentCount: number;
   initialVote: DealVoteDirection | null;
   initialSaved: boolean;
   isSignedIn: boolean;
+  voteStorageScope?: string;
 }) {
   const discountPercent = getDealDiscountPercent(deal);
   const expirationLabel = getExpirationLabel(deal);
@@ -52,7 +54,7 @@ export default function HomeDealCard({
       <div className="flex min-h-full flex-col">
         <Link
           href={dealHref}
-          className="home-deal-card-media relative flex aspect-[4/3] items-center justify-center border-b"
+          className="home-deal-card-media relative flex aspect-[4/3] items-center justify-center overflow-hidden border-b"
           aria-label={`View ${deal.title}`}
         >
           <div className="absolute left-3 top-3 z-10 flex items-start">
@@ -74,7 +76,7 @@ export default function HomeDealCard({
             </div>
           ) : null}
           {thumbnailUrl ? (
-            <span className="block h-full w-full overflow-hidden">
+            <span className="absolute inset-0 block overflow-hidden">
               <UserImage
                 src={thumbnailUrl}
                 alt=""
@@ -139,6 +141,7 @@ export default function HomeDealCard({
                 dealId={deal.id}
                 initialScore={deal.score}
                 initialVote={initialVote}
+                voteStorageScope={voteStorageScope}
                 disabled={deal.isExpired}
                 buttonClassName="inline-flex h-6 w-6 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:h-3.5 [&_svg]:w-3.5"
                 containerClassName="inline-flex items-center gap-0.5 rounded-full border-0 bg-transparent p-0 shadow-none"

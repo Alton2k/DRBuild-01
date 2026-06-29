@@ -6,8 +6,9 @@ import {
   getDealVoteDirectionsByDealIds,
   getProfileVoteStats,
 } from "@/lib/deals";
-import { getCommentsByAuthorUserIdResult } from "@/lib/comments";
+import { getCommentCountsByDealIds, getCommentsByAuthorUserIdResult } from "@/lib/comments";
 import { getSavedDealsForUserResult } from "@/lib/savedDeals";
+import { getDealVoteViewerAliases, getDealVoteViewerId } from "@/lib/dealVoteIdentity";
 import { createDefaultAccountSettings } from "@/lib/accountSettings";
 import { getAccountSettingsForUser } from "@/lib/userSettings";
 import { getFollowSummaryForUser } from "@/lib/follows";
@@ -74,13 +75,25 @@ export default async function ProfilePage() {
       ...rawSavedDeals.map((savedDeal) => savedDeal.deal.id),
     ]),
   );
-  const postedDeals = rawPostedDeals;
-  const savedDeals = rawSavedDeals;
-  const [viewerVotes, voteStats, followCounts] = await Promise.all([
-    getDealVoteDirectionsByDealIds(profileDealIds, dealViewerId),
-    getProfileVoteStats(postedDeals.map((deal) => deal.id), dealViewerId),
+  const dealVoteViewerId = getDealVoteViewerId({ userId: user.id, anonymousViewerId: dealViewerId });
+  const dealVoteViewerAliases = getDealVoteViewerAliases({ userId: user.id, anonymousViewerId: dealViewerId });
+  const [viewerVotes, voteStats, followCounts, profileCommentCounts] = await Promise.all([
+    getDealVoteDirectionsByDealIds(profileDealIds, dealVoteViewerId, user.id, dealVoteViewerAliases),
+    getProfileVoteStats(rawPostedDeals.map((deal) => deal.id), dealVoteViewerId, user.id),
     getFollowSummaryForUser(user.id),
+    getCommentCountsByDealIds(profileDealIds),
   ]);
+  const postedDeals = rawPostedDeals.map((deal) => ({
+    ...deal,
+    commentCount: profileCommentCounts.get(deal.id) ?? deal.commentCount,
+  }));
+  const savedDeals = rawSavedDeals.map((savedDeal) => ({
+    ...savedDeal,
+    deal: {
+      ...savedDeal.deal,
+      commentCount: profileCommentCounts.get(savedDeal.deal.id) ?? savedDeal.deal.commentCount,
+    },
+  }));
   const initialVotes = Object.fromEntries(viewerVotes);
   const savedDealIds = savedDeals.map((savedDeal) => savedDeal.deal.id);
 
@@ -121,6 +134,7 @@ export default async function ProfilePage() {
             comments={comments}
             initialVotes={initialVotes}
             savedDealIds={savedDealIds}
+            voteStorageScope={dealVoteViewerId}
             showStats
             stats={{
               upvotesGiven: voteStats.upvotesGiven,

@@ -41,6 +41,7 @@ function ProfileTabIcon({ tab }: { tab: ProfileTab }) {
 }
 
 type StatIconName = "up-given" | "up-received" | "comments" | "deals" | "followers" | "following";
+type StatItem = { label: string; value: number; icon: StatIconName };
 
 function StatIcon({ name }: { name: StatIconName }) {
   if (name === "up-given" || name === "up-received") {
@@ -62,14 +63,33 @@ function StatIcon({ name }: { name: StatIconName }) {
   return <UsersIcon name={name} className="h-5 w-5" />;
 }
 
+function ProfilePrivateState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="px-5 py-8 text-center">
+      <h3 className="text-lg font-semibold text-slate-950">{title}</h3>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-5 text-slate-600">{description}</p>
+    </div>
+  );
+}
+
 export default function ProfileActivityTabs({
   postedDeals,
   savedDeals,
   comments,
   initialVotes,
   savedDealIds,
+  voteStorageScope,
   stats,
   showSaved = true,
+  showComments = true,
+  savedIsPrivate = false,
+  commentsArePrivate = false,
   showStats = true,
   showCommentStat = true,
   showFollowingStat = true,
@@ -79,6 +99,7 @@ export default function ProfileActivityTabs({
   comments: ProfileComment[];
   initialVotes: Record<string, DealVoteDirection | null>;
   savedDealIds: string[];
+  voteStorageScope?: string;
   stats: {
     upvotesGiven: number;
     upvotesReceived: number;
@@ -88,6 +109,9 @@ export default function ProfileActivityTabs({
     following: number;
   };
   showSaved?: boolean;
+  showComments?: boolean;
+  savedIsPrivate?: boolean;
+  commentsArePrivate?: boolean;
   showStats?: boolean;
   showCommentStat?: boolean;
   showFollowingStat?: boolean;
@@ -128,7 +152,26 @@ export default function ProfileActivityTabs({
   const hasPostedPagination = postedDeals.length > activityPageSize;
   const hasSavedPagination = savedDeals.length > activityPageSize;
   const hasCommentsPagination = sortedComments.length > activityPageSize;
-  const visibleTabs = showSaved ? tabs : tabs.filter((tab) => tab.value !== "saved");
+  const visibleTabs = tabs.filter((tab) => {
+    if (tab.value === "saved") {
+      return showSaved || savedIsPrivate;
+    }
+
+    if (tab.value === "comments") {
+      return showComments || commentsArePrivate;
+    }
+
+    return true;
+  });
+  const tabGridClassName =
+    visibleTabs.length === 3 ? "grid-cols-3" : visibleTabs.length === 2 ? "grid-cols-2" : "grid-cols-1";
+  const visibleStats: StatItem[] = [
+    { label: "Upvotes received", value: stats.upvotesReceived, icon: "up-received" },
+    ...(showCommentStat ? [{ label: "Comments", value: stats.comments, icon: "comments" as const }] : []),
+    { label: "Deals posted", value: stats.dealsPosted, icon: "deals" },
+    { label: "Followers", value: stats.followers, icon: "followers" },
+    ...(showFollowingStat ? [{ label: "Following", value: stats.following, icon: "following" as const }] : []),
+  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -136,17 +179,7 @@ export default function ProfileActivityTabs({
         {showStats ? (
         <section className="pb-5">
           <dl className="flex flex-wrap justify-center">
-            {[
-              { label: "Upvotes received", value: stats.upvotesReceived, icon: "up-received" as const },
-              showCommentStat
-                ? { label: "Comments", value: stats.comments, icon: "comments" as const }
-                : null,
-              { label: "Deals posted", value: stats.dealsPosted, icon: "deals" as const },
-              { label: "Followers", value: stats.followers, icon: "followers" as const },
-              showFollowingStat
-                ? { label: "Following", value: stats.following, icon: "following" as const }
-                : null,
-            ].filter((stat): stat is { label: string; value: number; icon: StatIconName } => Boolean(stat)).map((stat) => (
+            {visibleStats.map((stat) => (
               <div
                 key={stat.label}
                 className="min-w-[8.5rem] px-3 py-3 text-center"
@@ -162,7 +195,7 @@ export default function ProfileActivityTabs({
         </section>
         ) : null}
         <div
-          className={`profile-activity-tabs grid gap-1 border-b ${showSaved ? "grid-cols-3" : "grid-cols-2"}`}
+          className={`profile-activity-tabs grid gap-1 border-b ${tabGridClassName}`}
           role="tablist"
           aria-label="Profile activity"
         >
@@ -205,6 +238,7 @@ export default function ProfileActivityTabs({
                   deal={deal}
                   initialVote={initialVotes[deal.id] ?? null}
                   initialSaved={savedDealIdSet.has(deal.id)}
+                  voteStorageScope={voteStorageScope}
                 />
               ))}
             </div>
@@ -224,8 +258,13 @@ export default function ProfileActivityTabs({
         )
       ) : null}
 
-      {showSaved && activeTab === "saved" ? (
-        savedDeals.length > 0 ? (
+      {activeTab === "saved" ? (
+        savedIsPrivate ? (
+          <ProfilePrivateState
+            title="Saved deals are private"
+            description="This member has chosen not to show saved deals on their public profile."
+          />
+        ) : savedDeals.length > 0 ? (
           <>
             <div className="profile-deal-grid grid gap-3">
               {visibleSavedDeals.map((savedDeal) => (
@@ -235,6 +274,7 @@ export default function ProfileActivityTabs({
                   savedAt={savedDeal.savedAt}
                   initialVote={initialVotes[savedDeal.deal.id] ?? null}
                   initialSaved
+                  voteStorageScope={voteStorageScope}
                 />
               ))}
             </div>
@@ -255,7 +295,12 @@ export default function ProfileActivityTabs({
       ) : null}
 
       {activeTab === "comments" ? (
-        visibleProfileComments.length > 0 ? (
+        commentsArePrivate ? (
+          <ProfilePrivateState
+            title="Comments are private"
+            description="This member has chosen not to show comments on their public profile."
+          />
+        ) : visibleProfileComments.length > 0 ? (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-base font-black text-slate-950">

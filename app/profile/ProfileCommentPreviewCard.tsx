@@ -28,8 +28,13 @@ export default function ProfileCommentPreviewCard({
     comment.dealImageGalleryUrls[0] || comment.dealImageUrl || comment.dealUploadedImageUrl;
   const categoryLabel = comment.dealSubCategory || comment.dealCategory;
   const dealHref = comment.dealStatus === "approved" ? `/deal/${comment.dealId}` : "";
+  const commentsHref = dealHref && !comment.dealIsExpired ? `${dealHref}#comments` : "";
   const dealPreview = (
-    <div className="flex min-w-0 items-center gap-4 md:justify-end">
+    <div
+      className={`flex min-w-0 items-center gap-4 md:justify-end ${
+        comment.dealIsExpired ? "grayscale" : ""
+      }`}
+    >
       <div className="flex h-24 w-32 shrink-0 items-center justify-center overflow-hidden">
         {thumbnailUrl ? (
           <UserImage src={thumbnailUrl} alt="" className="h-full w-full object-contain" />
@@ -54,13 +59,17 @@ export default function ProfileCommentPreviewCard({
         {comment.dealPrice > 0 ? (
           <p className="mt-2 text-sm font-black text-[#dc115e]">{formatMyrPrice(comment.dealPrice)}</p>
         ) : null}
+        {comment.dealIsExpired ? (
+          <span className="mt-2 inline-flex rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Expired
+          </span>
+        ) : null}
         {categoryLabel ? (
           <p className="mt-1 truncate text-xs font-bold text-slate-500">{categoryLabel}</p>
         ) : null}
       </div>
     </div>
   );
-  const commentsHref = dealHref ? `${dealHref}#comments` : "";
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -88,7 +97,7 @@ export default function ProfileCommentPreviewCard({
   }, [isMenuOpen]);
 
   const toggleLike = () => {
-    if (isPending || isDeleting || !dealHref) {
+    if (isPending || isDeleting || !commentsHref) {
       return;
     }
 
@@ -147,7 +156,7 @@ export default function ProfileCommentPreviewCard({
           <button
             type="button"
             onClick={toggleLike}
-            disabled={isPending || isDeleting || !dealHref}
+            disabled={isPending || isDeleting || !commentsHref}
             aria-pressed={viewerHasLiked}
             className={`comment-action-button inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
               viewerHasLiked ? "profile-comment-action-active" : ""

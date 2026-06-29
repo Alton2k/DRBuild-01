@@ -19,6 +19,7 @@ import { getCommentsForDealResult } from "@/lib/comments";
 import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
 import { getDealByIdResult, getDealVoteDirection, type Deal } from "@/lib/deals";
 import { getDealDiscountPercent, getDealSavingsAmount } from "@/lib/dealDisplay";
+import { getDealVoteViewerAliases, getDealVoteViewerId } from "@/lib/dealVoteIdentity";
 import { formatMyrPrice } from "@/lib/formatters";
 import { getSavedDealIdsForUser } from "@/lib/savedDeals";
 import { getAbsoluteUrl, siteDescription, siteName } from "@/lib/site";
@@ -229,8 +230,10 @@ export default async function DealDetailPage({
   const currentUserName = getUserDisplayName(user);
   const viewerId = cookieStore.get(commentViewerCookieName)?.value;
   const dealViewerId = cookieStore.get(dealViewerCookieName)?.value;
+  const dealVoteViewerId = getDealVoteViewerId({ userId: user?.id, anonymousViewerId: dealViewerId });
+  const dealVoteViewerAliases = getDealVoteViewerAliases({ userId: user?.id, anonymousViewerId: dealViewerId });
   const [viewerDealVote, savedDealIds] = await Promise.all([
-    getDealVoteDirection(deal.id, dealViewerId),
+    getDealVoteDirection(deal.id, dealVoteViewerId, user?.id, dealVoteViewerAliases),
     user ? getSavedDealIdsForUser(user.id) : Promise.resolve(new Set<string>()),
   ]);
   const publicAuthorSettings = await getAccountSettingsByUserIds([
@@ -313,7 +316,7 @@ export default async function DealDetailPage({
 
           <div className="flex min-w-0 flex-col gap-6">
             <header className="deal-detail-header border-b pb-6">
-              <h1 className="deal-detail-title text-3xl font-bold leading-tight sm:text-4xl">
+              <h1 className="deal-detail-title line-clamp-3 break-words text-3xl font-bold leading-tight sm:text-4xl">
                 {deal.title}
               </h1>
 
@@ -417,6 +420,7 @@ export default async function DealDetailPage({
                 dealId={deal.id}
                 initialScore={deal.score}
                 initialVote={viewerDealVote}
+                voteStorageScope={dealVoteViewerId}
                 disabled={deal.isExpired}
                 buttonClassName="inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:h-5 [&_svg]:w-5"
                 containerClassName="inline-flex items-center gap-1 rounded-full border-0 bg-transparent p-0 shadow-none"

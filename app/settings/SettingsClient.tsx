@@ -102,6 +102,11 @@ const privacyToggles: { key: ToggleKey; label: string; description: string }[] =
     description: "Let visitors browse deals you have saved.",
   },
   {
+    key: "showComments",
+    label: "Comment Visibility",
+    description: "Let visitors browse comments you have posted.",
+  },
+  {
     key: "allowFollowers",
     label: "Allow Followers",
     description: "Let members follow your future deal submissions.",

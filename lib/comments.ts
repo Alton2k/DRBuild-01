@@ -8,6 +8,7 @@ import {
   type StrapiSingleResponse,
 } from "./strapi";
 import { dataFetchErrorResult, logDataFetchError, type DataResult } from "./dataResult";
+import { isDealExpiredByDate } from "./deals";
 
 export interface Comment {
   id: string;
@@ -47,6 +48,8 @@ export interface ProfileComment {
   dealId: string;
   dealTitle: string;
   dealStatus: "pending" | "approved" | "rejected";
+  dealIsExpired: boolean;
+  dealExpiredAt?: string;
   dealPrice: number;
   dealCategory: string;
   dealSubCategory: string;
@@ -87,6 +90,8 @@ type StrapiComment = Omit<Comment, "id" | "dealId" | "createdAt"> & {
       imageUrl?: string;
       uploadedImageUrl?: string;
       imageGalleryUrls?: string[];
+      isExpired?: boolean;
+      expiredAt?: string | null;
     };
     moderationStatus?: "pending" | "approved" | "rejected";
     createdAt?: string;
@@ -96,6 +101,8 @@ type StrapiComment = Omit<Comment, "id" | "dealId" | "createdAt"> & {
     imageUrl?: string;
     uploadedImageUrl?: string;
     imageGalleryUrls?: string[];
+    isExpired?: boolean;
+    expiredAt?: string | null;
   };
 };
 
@@ -165,6 +172,7 @@ export async function getCommentsByAuthorUserIdResult(
       data: response.data.map((entity) => {
         const fields = getStrapiEntityFields(entity);
         const comment = toComment(entity);
+        const dealExpiredAt = fields.deal?.expiredAt ?? fields.deal?.attributes?.expiredAt ?? "";
 
         return {
           id: comment.id,
@@ -174,6 +182,10 @@ export async function getCommentsByAuthorUserIdResult(
             fields.deal?.moderationStatus ??
             fields.deal?.attributes?.moderationStatus ??
             "pending",
+          dealIsExpired:
+            Boolean(fields.deal?.isExpired ?? fields.deal?.attributes?.isExpired) ||
+            isDealExpiredByDate(dealExpiredAt),
+          ...(dealExpiredAt ? { dealExpiredAt } : {}),
           dealPrice: toNumber(fields.deal?.price ?? fields.deal?.attributes?.price),
           dealCategory: fields.deal?.category ?? fields.deal?.attributes?.category ?? "",
           dealSubCategory: fields.deal?.subCategory ?? fields.deal?.attributes?.subCategory ?? "",

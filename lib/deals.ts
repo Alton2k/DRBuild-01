@@ -114,6 +114,7 @@ type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "status" | "
 type StrapiDealVote = {
   direction?: DealVoteDirection;
   viewerId?: string;
+  userId?: string;
   dealDocumentId?: string;
   deal?: {
     id?: number;
@@ -153,10 +154,14 @@ function toOptionalNumber(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function isDealExpiredByDate(expiredAt: string | null | undefined) {
+  return expiredAt ? new Date(expiredAt).getTime() <= Date.now() : false;
+}
+
 export function toDeal(entity: Parameters<typeof getStrapiEntityFields<StrapiDeal>>[0]): Deal {
   const fields = getStrapiEntityFields(entity);
   const expiredAt = fields.expiredAt ?? "";
-  const isPastExpiration = expiredAt ? new Date(expiredAt).getTime() <= Date.now() : false;
+  const isPastExpiration = isDealExpiredByDate(expiredAt);
 
   return {
     id: getStrapiEntityId(entity),
@@ -436,50 +441,113 @@ export async function getDealByIdOrNull(id: string): Promise<Deal | null> {
 export async function getDealVoteDirection(
   id: string,
   viewerId: string | undefined,
+  userId?: string,
+  viewerAliases: string[] = [],
 ): Promise<DealVoteDirection | null> {
-  if (!viewerId) {
+  if (userId) {
+    const vote = await getDealVoteForUser(id, userId);
+
+    if (vote) {
+      return vote.direction;
+    }
+  }
+
+  const viewerIds = Array.from(new Set([viewerId, ...viewerAliases].filter((value): value is string => Boolean(value))));
+
+  if (viewerIds.length === 0) {
     return null;
   }
 
-  const vote = await getDealVoteForViewer(id, viewerId);
+  const vote = await getDealVoteForViewers(id, viewerIds);
 
   return vote?.direction ?? null;
 }
 
-export async function getDealVoteDirectionsByDealIds(dealIds: string[], viewerId: string | undefined) {
-  if (!viewerId || dealIds.length === 0) {
+export async function getDealVoteDirectionsByDealIds(
+  dealIds: string[],
+  viewerId: string | undefined,
+  userId?: string,
+  viewerAliases: string[] = [],
+) {
+  const viewerIds = Array.from(new Set([viewerId, ...viewerAliases].filter((value): value is string => Boolean(value))));
+
+  if ((viewerIds.length === 0 && !userId) || dealIds.length === 0) {
     return new Map(dealIds.map((dealId) => [dealId, null as DealVoteDirection | null]));
   }
 
   const uniqueDealIds = Array.from(new Set(dealIds));
+  const votes = new Map<string, DealVoteDirection | null>(uniqueDealIds.map((dealId) => [dealId, null]));
+
+  if (userId) {
+    const userVotes = await getDealVoteDirectionsByDealIdsForField(uniqueDealIds, "userId", userId);
+
+    for (const [dealId, direction] of userVotes) {
+      votes.set(dealId, direction);
+    }
+  }
+
+  if (viewerIds.length === 0 || Array.from(votes.values()).every(Boolean)) {
+    return votes;
+  }
+
+  const viewerVotes = await getDealVoteDirectionsByDealIdsForViewers(uniqueDealIds, viewerIds);
+
+  for (const [dealId, direction] of viewerVotes) {
+    if (!votes.get(dealId)) {
+      votes.set(dealId, direction);
+    }
+  }
+
+  return votes;
+}
+
+async function getDealVoteDirectionsByDealIdsForField(
+  dealIds: string[],
+  field: "viewerId" | "userId",
+  value: string,
+) {
   const query = new URLSearchParams({
-    "filters[viewerId][$eq]": viewerId,
-    "pagination[pageSize]": String(uniqueDealIds.length),
+    [`filters[${field}][$eq]`]: value,
+    "pagination[pageSize]": String(dealIds.length),
   });
 
-  uniqueDealIds.forEach((dealId, index) => {
+  dealIds.forEach((dealId, index) => {
     query.set(`filters[dealDocumentId][$in][${index}]`, dealId);
   });
 
   const response = await strapiRequest<StrapiListResponse<StrapiDealVote>>("/api/deal-votes", { query }).catch(
     (error) => {
-      logDataFetchError({ functionName: "getDealVoteDirectionsByDealIds", endpoint: "/api/deal-votes", query }, error);
+      logDataFetchError({
+        functionName: "getDealVoteDirectionsByDealIdsForField",
+        endpoint: "/api/deal-votes",
+        query,
+      }, error);
       return null;
     },
   );
-  const voteEntries =
+
+  return new Map(
     response?.data.flatMap((vote) => {
       const fields = getStrapiEntityFields(vote);
       const direction = fields.direction === "up" || fields.direction === "down" ? fields.direction : null;
       const dealId = fields.dealDocumentId ?? fields.deal?.documentId ?? (fields.deal?.id ? String(fields.deal.id) : "");
 
       return direction && dealId ? ([[dealId, direction] as const]) : [];
-    }) ?? [];
+    }) ?? [],
+  );
+}
 
-  const votes = new Map<string, DealVoteDirection | null>(uniqueDealIds.map((dealId) => [dealId, null]));
+async function getDealVoteDirectionsByDealIdsForViewers(dealIds: string[], viewerIds: string[]) {
+  const votes = new Map<string, DealVoteDirection>();
 
-  for (const [dealId, direction] of voteEntries) {
-    votes.set(dealId, direction);
+  for (const viewerId of viewerIds) {
+    const viewerVotes = await getDealVoteDirectionsByDealIdsForField(dealIds, "viewerId", viewerId);
+
+    for (const [dealId, direction] of viewerVotes) {
+      if (!votes.has(dealId)) {
+        votes.set(dealId, direction);
+      }
+    }
   }
 
   return votes;
@@ -496,7 +564,7 @@ async function getDealVoteCount(query: URLSearchParams) {
   return response?.meta?.pagination?.total ?? 0;
 }
 
-export async function getProfileVoteStats(dealIds: string[], viewerId: string | undefined) {
+export async function getProfileVoteStats(dealIds: string[], viewerId: string | undefined, userId?: string) {
   const upvotesGivenQuery = new URLSearchParams({
     "filters[direction][$eq]": "up",
     "pagination[pageSize]": "1",
@@ -506,7 +574,9 @@ export async function getProfileVoteStats(dealIds: string[], viewerId: string | 
     "pagination[pageSize]": "1",
   });
 
-  if (viewerId) {
+  if (userId) {
+    upvotesGivenQuery.set("filters[userId][$eq]", userId);
+  } else if (viewerId) {
     upvotesGivenQuery.set("filters[viewerId][$eq]", viewerId);
   }
 
@@ -515,7 +585,7 @@ export async function getProfileVoteStats(dealIds: string[], viewerId: string | 
   });
 
   const [upvotesGiven, upvotesReceived] = await Promise.all([
-    viewerId ? getDealVoteCount(upvotesGivenQuery) : Promise.resolve(0),
+    userId || viewerId ? getDealVoteCount(upvotesGivenQuery) : Promise.resolve(0),
     dealIds.length > 0 ? getDealVoteCount(upvotesReceivedQuery) : Promise.resolve(0),
   ]);
 
@@ -750,6 +820,18 @@ export async function restoreReportedDeal(id: string) {
   return response.data ? toDeal(response.data) : null;
 }
 
+async function getDealVoteForViewers(dealId: string, viewerIds: string[]) {
+  for (const viewerId of viewerIds) {
+    const vote = await getDealVoteForViewer(dealId, viewerId);
+
+    if (vote) {
+      return vote;
+    }
+  }
+
+  return null;
+}
+
 async function getDealVoteForViewer(dealId: string, viewerId: string) {
   const query = new URLSearchParams({
     "filters[dealDocumentId][$eq]": dealId,
@@ -760,6 +842,38 @@ async function getDealVoteForViewer(dealId: string, viewerId: string) {
   const response = await strapiRequest<StrapiListResponse<StrapiDealVote>>("/api/deal-votes", { query }).catch(
     (error) => {
       logDataFetchError({ functionName: "getDealVoteForViewer", endpoint: "/api/deal-votes", query }, error);
+      return null;
+    },
+  );
+  const vote = response?.data[0];
+
+  if (!vote) {
+    return null;
+  }
+
+  const fields = getStrapiEntityFields(vote);
+  const direction = fields.direction === "up" || fields.direction === "down" ? fields.direction : null;
+
+  if (!direction) {
+    return null;
+  }
+
+  return {
+    id: getStrapiEntityId(vote),
+    direction,
+  };
+}
+
+async function getDealVoteForUser(dealId: string, userId: string) {
+  const query = new URLSearchParams({
+    "filters[dealDocumentId][$eq]": dealId,
+    "filters[userId][$eq]": userId,
+    "pagination[pageSize]": "1",
+  });
+
+  const response = await strapiRequest<StrapiListResponse<StrapiDealVote>>("/api/deal-votes", { query }).catch(
+    (error) => {
+      logDataFetchError({ functionName: "getDealVoteForUser", endpoint: "/api/deal-votes", query }, error);
       return null;
     },
   );
@@ -793,13 +907,21 @@ function isUniqueConstraintError(error: unknown) {
   );
 }
 
-export async function voteDeal(id: string, viewerId: string, direction: DealVoteDirection) {
+export async function voteDeal(
+  id: string,
+  viewerId: string,
+  direction: DealVoteDirection,
+  userId?: string,
+  viewerAliases: string[] = [],
+) {
   // Voting is handled by Strapi so the vote row and score update share one database transaction.
   const response = await strapiRequest<StrapiDealVoteResponse>(`/api/deals/${id}/vote`, {
     method: "POST",
     requireToken: true,
     body: {
       viewerId,
+      ...(userId ? { userId } : {}),
+      ...(viewerAliases.length > 0 ? { viewerAliases } : {}),
       direction,
     },
   }).catch((error) => {

@@ -13,6 +13,7 @@ interface InputFieldProps {
   disabled?: boolean;
   inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
   autoComplete?: React.InputHTMLAttributes<HTMLInputElement>["autoComplete"];
+  maxLength?: React.InputHTMLAttributes<HTMLInputElement>["maxLength"];
   extra?: React.ReactNode;
   onChange: (value: string) => void;
 }
@@ -33,6 +34,7 @@ export default function InputField({
   disabled,
   inputMode,
   autoComplete = "off",
+  maxLength,
   extra,
   onChange,
 }: InputFieldProps) {
@@ -60,6 +62,7 @@ export default function InputField({
         placeholder={placeholder}
         inputMode={inputMode}
         autoComplete={autoComplete}
+        maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         className={`post-form-field block h-12 w-full rounded-2xl border px-4 text-sm shadow-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-80 ${
           error

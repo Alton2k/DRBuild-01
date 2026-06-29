@@ -21,7 +21,11 @@ function getStatusLabel(status: Deal["status"]) {
   return "Pending review";
 }
 
-function getStatusClassName(status: Deal["status"]) {
+function getStatusClassName(status: Deal["status"], isExpired = false) {
+  if (isExpired) {
+    return "border-slate-600 bg-slate-600 text-white";
+  }
+
   if (status === "approved") {
     return "border-emerald-600 bg-emerald-600 text-white";
   }
@@ -38,29 +42,38 @@ export default function ProfileDealPreviewCard({
   savedAt,
   initialVote,
   initialSaved,
+  voteStorageScope,
 }: {
   deal: Deal;
   savedAt?: string;
   initialVote: DealVoteDirection | null;
   initialSaved: boolean;
+  voteStorageScope?: string;
 }) {
   const hasOriginalPrice = deal.originalPrice !== null && deal.originalPrice > deal.price;
   const discountPercent = getDealDiscountPercent(deal);
   const thumbnailUrl = deal.imageGalleryUrls[0] || deal.imageUrl || deal.uploadedImageUrl;
+  const statusLabel = deal.isExpired ? "Expired" : getStatusLabel(deal.status);
+  const statusClassName = getStatusClassName(deal.status, deal.isExpired);
+  const canComment = deal.status === "approved" && !deal.isExpired;
   const content = (
-    <article className="home-deal-card flex min-h-full flex-col overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <article
+      className={`home-deal-card flex min-h-full flex-col overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        deal.isExpired ? "home-deal-card-expired" : ""
+      }`}
+    >
       <div className="flex min-h-full flex-col">
         {deal.status === "approved" ? (
           <Link
             href={`/deal/${deal.id}`}
             aria-label={`View ${deal.title}`}
-            className="home-deal-card-media relative flex aspect-[4/3] items-center justify-center border-b"
+            className="home-deal-card-media relative flex aspect-[4/3] items-center justify-center overflow-hidden border-b"
           >
           <div className="absolute left-3 top-3 z-10">
             <span
-              className={`home-deal-card-badge inline-flex h-7 items-center border px-3 text-xs font-bold uppercase tracking-[0.12em] shadow-sm ${getStatusClassName(deal.status)}`}
+              className={`home-deal-card-badge inline-flex h-7 items-center border px-3 text-xs font-bold uppercase tracking-[0.12em] shadow-sm ${statusClassName}`}
             >
-              {getStatusLabel(deal.status)}
+              {statusLabel}
             </span>
           </div>
           {discountPercent !== null ? (
@@ -74,7 +87,7 @@ export default function ProfileDealPreviewCard({
             <UserImage
               src={thumbnailUrl}
               alt=""
-              className="h-full w-full object-contain p-3 transition duration-200 hover:scale-[1.02]"
+              className="absolute inset-0 h-full w-full object-contain p-3 transition duration-200 hover:scale-[1.02]"
             />
           ) : (
             <span className="px-4 text-center text-sm font-medium text-slate-400">
@@ -83,12 +96,12 @@ export default function ProfileDealPreviewCard({
           )}
           </Link>
         ) : (
-          <div className="home-deal-card-media relative flex aspect-[4/3] items-center justify-center border-b">
+          <div className="home-deal-card-media relative flex aspect-[4/3] items-center justify-center overflow-hidden border-b">
             <div className="absolute left-3 top-3 z-10">
               <span
-                className={`home-deal-card-badge inline-flex h-7 items-center border px-3 text-xs font-bold uppercase tracking-[0.12em] shadow-sm ${getStatusClassName(deal.status)}`}
+                className={`home-deal-card-badge inline-flex h-7 items-center border px-3 text-xs font-bold uppercase tracking-[0.12em] shadow-sm ${statusClassName}`}
               >
-                {getStatusLabel(deal.status)}
+                {statusLabel}
               </span>
             </div>
             {discountPercent !== null ? (
@@ -99,7 +112,7 @@ export default function ProfileDealPreviewCard({
               </div>
             ) : null}
             {thumbnailUrl ? (
-              <UserImage src={thumbnailUrl} alt="" className="h-full w-full object-contain p-3" />
+              <UserImage src={thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-contain p-3" />
             ) : (
               <span className="px-4 text-center text-sm font-medium text-slate-400">
                 No image submitted
@@ -151,12 +164,13 @@ export default function ProfileDealPreviewCard({
               dealId={deal.id}
               initialScore={deal.score}
               initialVote={initialVote}
+              voteStorageScope={voteStorageScope}
               disabled={deal.status !== "approved" || deal.isExpired}
               buttonClassName="inline-flex h-6 w-6 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:h-3.5 [&_svg]:w-3.5"
               containerClassName="inline-flex items-center gap-0.5 rounded-full border-0 bg-transparent p-0 shadow-none"
               scoreClassName="min-w-4 text-center text-xs font-bold tabular-nums"
             />
-            {deal.status === "approved" ? (
+            {canComment ? (
               <Link
                 href={`/deal/${deal.id}#comments`}
                 aria-label={`${deal.commentCount} ${deal.commentCount === 1 ? "comment" : "comments"}`}

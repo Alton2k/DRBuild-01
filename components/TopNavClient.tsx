@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -96,6 +97,28 @@ function subscribeToThemeModeChanges(onStoreChange: () => void) {
   return () => {
     window.removeEventListener("storage", onStoreChange);
     window.removeEventListener(themeModeChangedEventName, onStoreChange);
+  };
+}
+
+type CategoryGridStyle = CSSProperties & {
+  "--category-grid-columns": number;
+  "--category-grid-min-height": string;
+};
+
+function getCategoryGridStyle(itemCount: number): CategoryGridStyle {
+  const columns =
+    itemCount <= 1 ? 1 :
+    itemCount <= 4 ? 2 :
+    itemCount <= 6 ? 3 :
+    itemCount <= 8 ? 4 :
+    5;
+  const rows = Math.max(1, Math.ceil(itemCount / columns));
+  const rowHeight = itemCount <= 4 ? 7.6 : itemCount <= 8 ? 6.5 : 5.6;
+  const minHeight = Math.min(24, Math.max(12, rows * rowHeight));
+
+  return {
+    "--category-grid-columns": columns,
+    "--category-grid-min-height": `${minHeight}rem`,
   };
 }
 
@@ -764,17 +787,31 @@ export default function TopNavClient({
                   </Link>
                 </div>
 
-                <div className="category-mega-menu-grid mt-4">
-                  {megaMenuCategory.subcategories.map((subcategory) => (
-                    <Link
-                      key={subcategory}
-                      href={createCategoryHref(megaMenuCategory.name, subcategory)}
-                      onClick={() => setIsCategoryMegaMenuOpen(false)}
-                      className="category-mega-menu-subcategory"
-                    >
-                      {subcategory}
-                    </Link>
-                  ))}
+                <div
+                  className="category-mega-menu-grid mt-4"
+                  style={getCategoryGridStyle(megaMenuCategory.subcategories.length)}
+                >
+                  {megaMenuCategory.subcategories.map((subcategory) => {
+                    const isCurrentSubCategory =
+                      megaMenuCategory.name === activeCategory && subcategory === activeSubCategory;
+
+                    return (
+                      <Link
+                        key={subcategory}
+                        href={createCategoryHref(megaMenuCategory.name, subcategory)}
+                        onClick={() => setIsCategoryMegaMenuOpen(false)}
+                        aria-current={isCurrentSubCategory ? "page" : undefined}
+                        className={`category-mega-menu-subcategory ${
+                          isCurrentSubCategory ? "is-active" : ""
+                        }`}
+                      >
+                        <span className="category-mega-menu-subcategory-mark" aria-hidden="true">
+                          {subcategory.slice(0, 1)}
+                        </span>
+                        <span className="category-mega-menu-subcategory-label">{subcategory}</span>
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1188,12 +1225,12 @@ export default function TopNavClient({
                   )}
 
                   {hasSubcategories && isExpanded ? (
-                    <div className="ml-3 mt-1 grid gap-1 border-l border-slate-200 pl-3">
+                    <div className="ml-3 mt-2 grid grid-cols-2 gap-2 border-l border-slate-200 pl-3">
                       <Link
                         href={createCategoryHref(dealCategory.name)}
                         onClick={closeMenu}
                         aria-current={isActiveCategory && !activeSubCategory ? "page" : undefined}
-                        className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                        className={`category-mobile-subcategory-tile ${
                           isActiveCategory && !activeSubCategory
                             ? "sidebar-menu-action-active"
                             : "sidebar-menu-action"
@@ -1210,13 +1247,16 @@ export default function TopNavClient({
                             href={createCategoryHref(dealCategory.name, subcategory)}
                             onClick={closeMenu}
                             aria-current={isActiveSubCategory ? "page" : undefined}
-                            className={`rounded-lg px-1 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                            className={`category-mobile-subcategory-tile ${
                               isActiveSubCategory
                                 ? "sidebar-menu-action-active"
                                 : "sidebar-menu-action"
                             }`}
                           >
-                            {subcategory}
+                            <span className="category-mobile-subcategory-mark" aria-hidden="true">
+                              {subcategory.slice(0, 1)}
+                            </span>
+                            <span>{subcategory}</span>
                           </Link>
                         );
                       })}

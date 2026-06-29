@@ -12,6 +12,7 @@ interface DealVoteButtonsProps {
   scoreClassName?: string;
   buttonClassName?: string;
   containerClassName?: string;
+  voteStorageScope?: string;
   disabled?: boolean;
 }
 
@@ -46,8 +47,8 @@ const selectedScoreClassNames: Record<VoteDirection, string> = {
   down: "deal-vote-score-down",
 };
 
-function getVoteStorageKey(dealId: string) {
-  return `deal-rakyat:deal-vote:${dealId}`;
+function getVoteStorageKey(dealId: string, voteStorageScope: string) {
+  return `deal-rakyat:deal-vote:${voteStorageScope}:${dealId}`;
 }
 
 export default function DealVoteButtons({
@@ -58,6 +59,7 @@ export default function DealVoteButtons({
   scoreClassName = defaultScoreClassName,
   buttonClassName = defaultButtonClassName,
   containerClassName = defaultContainerClassName,
+  voteStorageScope = "anonymous",
   disabled = false,
 }: DealVoteButtonsProps) {
   const [score, setScore] = useState(initialScore);
@@ -81,9 +83,9 @@ export default function DealVoteButtons({
     setSelectedVote(nextVote);
 
     if (nextVote) {
-      window.localStorage.setItem(getVoteStorageKey(dealId), nextVote);
+      window.localStorage.setItem(getVoteStorageKey(dealId, voteStorageScope), nextVote);
     } else {
-      window.localStorage.removeItem(getVoteStorageKey(dealId));
+      window.localStorage.removeItem(getVoteStorageKey(dealId, voteStorageScope));
     }
 
     startTransition(async () => {
@@ -95,9 +97,9 @@ export default function DealVoteButtons({
         setErrorMessage(result.message ?? "Could not save your vote right now. Please try again.");
 
         if (previousVote) {
-          window.localStorage.setItem(getVoteStorageKey(dealId), previousVote);
+          window.localStorage.setItem(getVoteStorageKey(dealId, voteStorageScope), previousVote);
         } else {
-          window.localStorage.removeItem(getVoteStorageKey(dealId));
+          window.localStorage.removeItem(getVoteStorageKey(dealId, voteStorageScope));
         }
 
         return;
@@ -107,9 +109,9 @@ export default function DealVoteButtons({
       setSelectedVote(result.viewerVote);
 
       if (result.viewerVote) {
-        window.localStorage.setItem(getVoteStorageKey(dealId), result.viewerVote);
+        window.localStorage.setItem(getVoteStorageKey(dealId, voteStorageScope), result.viewerVote);
       } else {
-        window.localStorage.removeItem(getVoteStorageKey(dealId));
+        window.localStorage.removeItem(getVoteStorageKey(dealId, voteStorageScope));
       }
     });
   };

@@ -19,6 +19,7 @@ export type ToggleKey =
   | "showJoinDate"
   | "showActivityStats"
   | "showSavedDeals"
+  | "showComments"
   | "allowFollowers";
 
 export type StoredProfileSettings = {
@@ -44,6 +45,7 @@ export const defaultToggles: Record<ToggleKey, boolean> = {
   showJoinDate: true,
   showActivityStats: true,
   showSavedDeals: false,
+  showComments: true,
   allowFollowers: true,
 };
 

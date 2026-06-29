@@ -29,6 +29,12 @@ import { saveDealForUser, unsaveDealForUser } from "@/lib/savedDeals";
 import { getAccountSettingsForUser } from "@/lib/userSettings";
 import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
 import { validateDealUrl } from "@/lib/dealUrlSecurity";
+import { getDealTitleValidationError } from "@/lib/dealTitleValidation";
+import {
+  getAnonymousDealVoteViewerId,
+  getAuthenticatedDealVoteViewerId,
+  getDealVoteViewerAliases,
+} from "@/lib/dealVoteIdentity";
 import {
   checkViewerAndIpRateLimit,
   commentViewerCookieName,
@@ -346,8 +352,9 @@ export async function createDealAction(
   const shippingCost = hasFreeShipping ? 0 : parseNonNegativeNumber(shippingCostValue);
   const expiration = parseFutureExpiration(expiresAtValue);
 
-  if (!title) {
-    errors.title = "Deal title is required.";
+  const titleError = getDealTitleValidationError(title);
+  if (titleError) {
+    errors.title = titleError;
   }
 
   const urlValidation = url ? validateDealUrl(url) : null;
@@ -468,6 +475,7 @@ export async function createDealAction(
             ? "Deal submitted for moderation because automated checks found something for admins to review."
           : "Deal submitted for moderation. Approve it in admin to publish it.",
     dealId: deal.id,
+    dealStatus: moderation.status,
   };
 }
 
@@ -642,8 +650,20 @@ export async function voteDealAction(
     };
   }
 
-  const viewerId = await getOrCreateDealViewerId();
+  const user = await getCurrentUser();
+  const anonymousViewerId = await getOrCreateDealViewerId();
+  const viewerId = getAuthenticatedDealVoteViewerId(user?.id) ?? getAnonymousDealVoteViewerId(anonymousViewerId);
+  const viewerAliases = getDealVoteViewerAliases({ userId: user?.id, anonymousViewerId });
   const ip = await getClientIp();
+
+  if (!viewerId) {
+    return {
+      ok: false,
+      score: deal.score,
+      viewerVote: null,
+      message: "Could not identify this voting session. Please refresh and try again.",
+    };
+  }
 
   // TODO: Consider a LOGIN_REQUIRED_FOR_VOTING feature flag once public usage grows.
   if (!checkViewerAndIpRateLimit("vote", viewerId, ip, 30, 10 * 60)) {
@@ -657,7 +677,7 @@ export async function voteDealAction(
     };
   }
 
-  const result = await voteDeal(id, viewerId, direction);
+  const result = await voteDeal(id, viewerId, direction, user?.id, viewerAliases);
 
   if (!result) {
     return {

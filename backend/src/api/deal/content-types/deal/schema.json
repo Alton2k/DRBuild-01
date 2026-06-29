@@ -12,7 +12,8 @@
   "attributes": {
     "title": {
       "type": "string",
-      "required": true
+      "required": true,
+      "maxLength": 90
     },
     "url": {
       "type": "text",

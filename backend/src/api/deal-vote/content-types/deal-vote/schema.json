@@ -20,6 +20,9 @@
       "type": "string",
       "required": true
     },
+    "userId": {
+      "type": "string"
+    },
     "dealDocumentId": {
       "type": "string",
       "required": true

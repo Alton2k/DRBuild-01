@@ -15,6 +15,7 @@ export interface DealActionState {
   ok: boolean;
   message: string;
   dealId?: string;
+  dealStatus?: "pending" | "approved" | "rejected";
   errors?: Partial<Record<DealFormField, string>>;
 }
 
