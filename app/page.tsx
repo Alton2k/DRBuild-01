@@ -145,25 +145,21 @@ const feedModes: {
   value: DealFeedMode;
   label: string;
   description: string;
-  heading: string;
 }[] = [
   {
     value: "hot",
     label: RANKING_DEFINITIONS.feedTopScore.label,
     description: RANKING_DEFINITIONS.feedTopScore.description,
-    heading: "Deals by Community Score",
   },
   {
     value: "discussed",
     label: RANKING_DEFINITIONS.feedMostComments.label,
     description: RANKING_DEFINITIONS.feedMostComments.description,
-    heading: "Deals by Comment Count",
   },
   {
     value: "new",
     label: RANKING_DEFINITIONS.feedNewest.label,
     description: RANKING_DEFINITIONS.feedNewest.description,
-    heading: "Newest Approved Deals",
   },
 ];
 
@@ -425,7 +421,6 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
   const periodRange: { start?: string; end?: string } = feed === "new" ? {} : getFeedPeriodRange(period);
   const todayRange = getTodayRange();
   const thisWeekRange = getThisWeekRange();
-  const selectedFeedMode = feedModes.find((mode) => mode.value === feed) ?? feedModes[0];
   const activeFilters = [
     q ? { label: `Search: ${q}` } : null,
     category ? { label: `Category: ${category}` } : null,
@@ -650,15 +645,10 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
         </section>
 
         <section id="deals" className="home-panel scroll-mt-28 lg:col-span-2">
-          <div className="flex flex-col gap-5">
-            <div className="community-feed-controls rounded-2xl border p-2.5 sm:p-3">
-              <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                <div className="min-w-0 lg:row-span-2 lg:self-center">
-                  <h2 className="community-feed-title truncate text-xl font-bold tracking-tight sm:text-2xl">
-                    {selectedFeedMode.heading}
-                  </h2>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:w-[25rem] lg:justify-between">
+          <div className="flex flex-col gap-7">
+            <div className="community-feed-controls">
+              <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
                   {feedModes.map((mode) => {
                     const isSelected = mode.value === feed;
 
@@ -675,7 +665,7 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                         scroll={false}
                         title={mode.label}
                         aria-current={isSelected ? "page" : undefined}
-                        className={`community-feed-period inline-flex items-center justify-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold leading-none transition ${
+                        className={`community-feed-period inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-md border px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                           isSelected
                             ? "community-feed-period-active"
                             : "community-feed-period-idle"
@@ -689,7 +679,7 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                 </div>
 
                 {feed !== "new" ? (
-                  <div className="community-feed-periods flex flex-wrap items-center justify-end gap-2 border-t pt-2.5 lg:col-start-2 lg:w-[25rem] lg:justify-between">
+                  <div className="community-feed-periods flex flex-wrap items-center gap-2 lg:flex-nowrap">
                     {feedPeriods.map((mode) => {
                       const isSelected = mode.value === period;
 
@@ -704,7 +694,7 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                               : `Uses the ${mode.label.toLowerCase()} Singapore calendar period.`
                           }
                           aria-current={isSelected ? "page" : undefined}
-                          className={`community-feed-period rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+                          className={`community-feed-period inline-flex h-11 min-w-0 items-center justify-center rounded-md border px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                             isSelected
                               ? "community-feed-period-active"
                               : "community-feed-period-idle"
@@ -867,17 +857,17 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white/90 px-4 py-6 text-sm text-slate-600 sm:px-6 lg:px-8">
+      <footer className="site-footer border-t px-4 py-6 text-sm sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p>Deal Rakyat</p>
           <div className="flex flex-wrap gap-4">
-            <Link href="/about" className="transition hover:text-slate-900">
+            <Link href="/about" className="transition">
               About
             </Link>
-            <Link href="/terms" className="transition hover:text-slate-900">
+            <Link href="/terms" className="transition">
               Terms
             </Link>
-            <Link href="/privacy" className="transition hover:text-slate-900">
+            <Link href="/privacy" className="transition">
               Privacy
             </Link>
           </div>

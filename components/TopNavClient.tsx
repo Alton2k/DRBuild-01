@@ -102,23 +102,20 @@ function subscribeToThemeModeChanges(onStoreChange: () => void) {
 
 type CategoryGridStyle = CSSProperties & {
   "--category-grid-columns": number;
-  "--category-grid-min-height": string;
+  "--category-grid-row-height": string;
 };
 
 function getCategoryGridStyle(itemCount: number): CategoryGridStyle {
   const columns =
     itemCount <= 1 ? 1 :
-    itemCount <= 4 ? 2 :
-    itemCount <= 6 ? 3 :
+    itemCount <= 3 ? 3 :
     itemCount <= 8 ? 4 :
     5;
-  const rows = Math.max(1, Math.ceil(itemCount / columns));
-  const rowHeight = itemCount <= 4 ? 7.6 : itemCount <= 8 ? 6.5 : 5.6;
-  const minHeight = Math.min(24, Math.max(12, rows * rowHeight));
+  const rowHeight = itemCount <= 3 ? 7.25 : itemCount <= 8 ? 6.25 : 5.55;
 
   return {
     "--category-grid-columns": columns,
-    "--category-grid-min-height": `${minHeight}rem`,
+    "--category-grid-row-height": `${rowHeight}rem`,
   };
 }
 
@@ -295,7 +292,7 @@ export default function TopNavClient({
   }, [isCategoryMegaMenuOpen]);
 
   useEffect(() => {
-    if (!isMenuOpen) {
+    if (!isMenuOpen && !isCategoryMegaMenuOpen) {
       if (wasMenuOpenRef.current) {
         menuOpenButtonRef.current?.focus();
       }
@@ -313,7 +310,7 @@ export default function TopNavClient({
     return () => {
       document.body.style.overflow = originalOverflow;
     };
-  }, [isMenuOpen]);
+  }, [isCategoryMegaMenuOpen, isMenuOpen]);
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -745,12 +742,12 @@ export default function TopNavClient({
               ref={categoryMegaMenuRef}
               role="dialog"
               aria-label="Categories"
-              className="category-mega-menu-panel grid gap-6 rounded-b-2xl p-5 shadow-xl lg:grid-cols-[240px_minmax(0,1fr)]"
+              className="category-mega-menu-panel grid gap-5 rounded-b-2xl p-4 shadow-xl lg:grid-cols-[210px_minmax(0,1fr)]"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="category-mega-menu-sidebar">
                 <p className="category-mega-menu-eyebrow">Categories</p>
-                <div className="mt-2 space-y-0.5">
+                <div className="category-mega-menu-category-list mt-2">
                   {categories.map((category) => {
                     const isSelected = category.name === megaMenuCategory.name;
 

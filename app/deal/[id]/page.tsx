@@ -501,14 +501,14 @@ export default async function DealDetailPage({
           </div>
         </section>
 
-        <section className="deal-detail-panel mt-6 rounded-3xl border p-5 shadow-sm sm:p-6">
-          <p className="deal-detail-section-kicker text-sm font-bold uppercase tracking-[0.22em]">
+        <section className="deal-detail-section mt-8">
+          <h2 className="deal-detail-section-title text-2xl font-bold">
             Description
-          </p>
+          </h2>
           {deal.voucherCode ? (
             <dl className="mt-4 grid gap-3 sm:grid-cols-2">
               {deal.voucherCode ? (
-                <div className="deal-detail-fact-card rounded-2xl border px-4 py-3">
+                <div className="deal-detail-inline-fact rounded-2xl border px-4 py-3">
                   <dt className="deal-detail-fact-label text-xs font-bold uppercase tracking-[0.16em]">
                     Voucher
                   </dt>
@@ -523,12 +523,9 @@ export default async function DealDetailPage({
           />
         </section>
 
-        <section id="comments" className="deal-detail-panel mt-8 scroll-mt-24 rounded-3xl border p-5 shadow-sm sm:p-8">
-          <div className="pb-2">
-            <p className="deal-detail-section-kicker text-sm font-bold uppercase tracking-[0.22em]">
-              Community
-            </p>
-            <h2 className="deal-detail-section-title mt-2 text-2xl font-bold">Comments</h2>
+        <section id="comments" className="deal-detail-section mt-10 scroll-mt-24">
+          <div className="pb-1">
+            <h2 className="deal-detail-section-title text-2xl font-bold">Comments</h2>
           </div>
 
           {commentsUnavailable ? (
