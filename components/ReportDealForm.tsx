@@ -20,9 +20,12 @@ export default function ReportDealForm({ dealId }: { dealId: string }) {
       <select
         id="report-reason"
         name="reason"
-        defaultValue="expired"
+        defaultValue=""
+        required
+        disabled={isPending}
         className="deal-detail-report-select min-h-11 rounded-md border px-4 text-sm font-medium shadow-sm outline-none transition"
       >
+        <option value="" disabled>Choose a reason</option>
         <option value="expired">Already expired</option>
         <option value="bad-price">Price is wrong</option>
         <option value="bad-link">Link does not work</option>
@@ -33,7 +36,7 @@ export default function ReportDealForm({ dealId }: { dealId: string }) {
         disabled={isPending}
         className="deal-detail-primary-action inline-flex h-11 items-center justify-center rounded-md px-4 text-sm font-bold transition disabled:cursor-wait disabled:opacity-60"
       >
-        {isPending ? "Reporting..." : "Report"}
+        {isPending ? "Reporting…" : "Report"}
       </button>
       {state.message ? (
         <p

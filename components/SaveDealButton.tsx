@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toggleSavedDealAction } from "@/app/actions";
 import { BookmarkIcon } from "@/components/icons";
 
@@ -24,6 +24,12 @@ export default function SaveDealButton({
   const [isSaved, setIsSaved] = useState(initialSaved);
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   const goToLogin = () => {
     const query = searchParams.toString();
@@ -62,6 +68,7 @@ export default function SaveDealButton({
       }
 
       setIsSaved(result.isSaved);
+      setMessage(result.isSaved ? "Deal saved." : "Removed from saved deals.");
       router.refresh();
     });
   };
@@ -95,7 +102,7 @@ export default function SaveDealButton({
       >
         <BookmarkIcon fill={isSaved ? "currentColor" : "none"} />
       </button>
-      {message ? <span className="sr-only" aria-live="polite">{message}</span> : null}
+      {message ? <span className="mobile-safe-toast theme-alert theme-alert-info pointer-events-none fixed bottom-4 left-1/2 z-[80] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 px-4 py-3 text-center text-sm font-semibold shadow-lg" role="status">{message}</span> : null}
     </span>
   );
 }

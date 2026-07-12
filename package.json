@@ -7,11 +7,13 @@
     "frontend:dev": "next dev",
     "backend:dev": "npm --prefix backend run dev",
     "backend:build": "npm --prefix backend run build",
+    "db:check": "npm --prefix backend run db:check",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm run lint && npm run build && npm run backend:build"
+    "test": "node --test --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/*.test.mjs",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build && npm run backend:build"
   },
   "dependencies": {
     "next": "16.2.4",

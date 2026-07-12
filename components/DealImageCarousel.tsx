@@ -46,7 +46,7 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
               }`}
               aria-label={`Show deal photo ${index + 1}`}
             >
-              <UserImage src={image} alt="" className="h-full w-full object-contain" />
+              <UserImage src={image} alt="" width={160} height={120} className="h-full w-full object-contain" />
             </button>
           ))}
         </div>
@@ -60,6 +60,8 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
         <UserImage
           src={activeImage}
           alt={title}
+          width={1200}
+          height={900}
           className="deal-image-carousel-main-image rounded-2xl object-cover"
         />
 
@@ -68,7 +70,7 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
             <button
               type="button"
               onClick={showPrevious}
-              className="absolute left-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-lg font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-950"
+              className="deal-carousel-action absolute left-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-lg font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-950"
               aria-label="Previous deal photo"
             >
               {"<"}
@@ -76,7 +78,7 @@ export default function DealImageCarousel({ images, title }: DealImageCarouselPr
             <button
               type="button"
               onClick={showNext}
-              className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-lg font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-950"
+              className="deal-carousel-action absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-lg font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-950"
               aria-label="Next deal photo"
             >
               {">"}

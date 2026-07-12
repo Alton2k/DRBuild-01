@@ -58,6 +58,19 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+#main-content {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Keep full-height routes stable when mobile browser chrome or the software
+   keyboard changes the visual viewport. The first declaration is the fallback
+   for browsers without dynamic viewport units. */
+.min-h-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 :where(code, pre, kbd, samp) {
   font-family: var(--font-mono);
 }
@@ -317,6 +330,14 @@ html {
   color: #334155;
 }
 
+.auth-inline-error {
+  color: #dc2626;
+}
+
+.auth-forgot-password-placeholder {
+  color: #475569;
+}
+
 .expiration-countdown-urgent {
   color: #ff0000;
   font-weight: 900;
@@ -352,6 +373,14 @@ html {
 
 :root[data-theme="dark"] .theme-alert-success {
   color: #a7f3d0;
+}
+
+:root[data-theme="dark"] .auth-inline-error {
+  color: #fca5a5;
+}
+
+:root[data-theme="dark"] .auth-forgot-password-placeholder {
+  color: #cbd5e1;
 }
 
 :root[data-theme="dark"] .theme-alert-info {
@@ -443,6 +472,88 @@ html {
 .topbar-shell {
   background-color: rgb(15 23 42 / 0.96) !important;
   border-color: #334155 !important;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.topbar-search-clear {
+  background: transparent;
+  color: #64748b;
+}
+
+.topbar-search-clear svg {
+  stroke: currentColor;
+}
+
+.topbar-search-clear:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.topbar-search-form {
+  z-index: 20;
+}
+
+:root[data-theme="dark"] .topbar-search-clear {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .topbar-search-clear:hover {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.topbar-member-results {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  top: calc(100% + 0.6rem);
+  z-index: 30;
+}
+
+.topbar-member-result-handle {
+  color: #64748b;
+}
+
+.topbar-member-result {
+  background: #ffffff;
+}
+
+.topbar-member-result + .topbar-member-result {
+  border-top: 1px solid #e2e8f0;
+}
+
+.topbar-member-result:hover,
+.topbar-member-result-active {
+  background: #f8fafc;
+}
+
+.topbar-member-result-name {
+  color: #0f172a;
+}
+
+:root[data-theme="dark"] .topbar-member-results {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+:root[data-theme="dark"] .topbar-member-result-handle {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .topbar-member-result {
+  background: #0f172a;
+}
+
+:root[data-theme="dark"] .topbar-member-result + .topbar-member-result {
+  border-top-color: #334155;
+}
+
+:root[data-theme="dark"] .topbar-member-result:hover,
+:root[data-theme="dark"] .topbar-member-result-active {
+  background: #1e293b;
+}
+
+:root[data-theme="dark"] .topbar-member-result-name {
+  color: #f8fafc;
 }
 
 .site-footer {
@@ -778,6 +889,55 @@ html {
   }
 }
 
+@media (max-width: 239px) {
+  .post-stepper ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Preserve the compact desktop treatment while giving the repeated controls
+   a WCAG-sized hit area on phones and other touch-first devices. */
+@media (hover: none), (pointer: coarse) {
+  :where(
+    .topbar-menu-trigger,
+    .topbar-search-clear,
+    .topbar-account-action,
+    .post-deal-cta,
+    .sidebar-menu-action,
+    .home-deal-card-cta,
+    .home-deal-card-icon-action,
+    .comment-submit-button,
+    .comment-action-button,
+    .comment-menu-button,
+    .comment-more-replies-button,
+    .profile-comment-menu-button,
+    .profile-comment-delete-button,
+    .profile-compact-action,
+    .profile-pagination-action,
+    .post-rich-editor-button,
+    .post-rich-editor-insert-button,
+    .deal-carousel-action,
+    .category-sidebar-action,
+    .admin-moderation-actions > button
+  ) {
+    min-height: 2.75rem;
+  }
+
+  :where(
+    .topbar-menu-trigger,
+    .topbar-search-clear,
+    .comment-menu-button,
+    .home-deal-card-icon-action,
+    .profile-comment-menu-button,
+    .profile-pagination-action,
+    .post-rich-editor-button,
+    .deal-carousel-action,
+    .category-sidebar-action
+  ) {
+    min-width: 2.75rem;
+  }
+}
+
 :root[data-theme="dark"] .topbar-account-action {
   background: #111827;
   border-color: #475569;
@@ -906,7 +1066,26 @@ html {
 .mobile-menu-panel {
   background: var(--background);
   background-color: var(--background);
+  height: 100vh;
+  height: 100dvh;
   isolation: isolate;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.mobile-menu-panel .sidebar-menu-action,
+.mobile-menu-panel .appearance-mode-option,
+.mobile-menu-panel .topbar-account-action {
+  min-height: 2.75rem;
+}
+
+.mobile-menu-panel .topbar-account-action {
+  min-width: 2.75rem;
+}
+
+.mobile-safe-toast {
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  max-width: calc(100vw - max(2rem, env(safe-area-inset-left, 0px) + env(safe-area-inset-right, 0px)));
 }
 
 .site-menu-header {
@@ -1006,7 +1185,12 @@ html {
 .auth-input:focus-visible {
   background: #ffffff;
   border-color: color-mix(in srgb, var(--brand) 45%, transparent);
-  box-shadow: 0 0 0 4px var(--brand-ring);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.auth-input:focus-visible {
+  outline: none;
+  outline-offset: 0;
 }
 
 .auth-submit-button {
@@ -1230,6 +1414,12 @@ html {
 .post-rich-editor-surface:empty::before {
   content: attr(data-placeholder);
   color: #94a3b8;
+}
+
+.post-rich-editor-surface {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .post-rich-editor-surface ul,
@@ -1813,6 +2003,47 @@ html {
   border-color: var(--line);
 }
 
+.app-dialog-overlay,
+.post-discard-overlay,
+.post-success-overlay {
+  align-items: safe center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-dialog-overlay > [role="dialog"],
+.post-discard-overlay > [role="dialog"],
+.post-success-overlay > .post-success-panel {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - max(2rem, env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767px) {
+  /* Safari zooms the page when a focused form control renders below 16px. */
+  :where(input, select, textarea, [contenteditable="true"]) {
+    font-size: 1rem;
+  }
+
+  .post-action-bar {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .secondary-category-tab,
+  .admin-filter-control {
+    min-height: 2.75rem;
+  }
+}
+
 @media (min-width: 640px) {
   .post-action-bar {
     border-top: 0;
@@ -1881,7 +2112,7 @@ html {
 :root[data-theme="dark"] .auth-input:focus-visible {
   background: rgb(15 23 42 / 0.88);
   border-color: color-mix(in srgb, var(--brand) 50%, transparent);
-  box-shadow: 0 0 0 4px var(--brand-ring);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 :root[data-theme="dark"] .post-form-card {
@@ -4403,8 +4634,7 @@ article {
 .post-success-panel,
 .post-discard-dialog,
 .deal-detail-hero,
-.deal-detail-panel,
-:where(section, article, div).rounded-3xl:not(.theme-alert) {
+.deal-detail-panel {
   border-color: transparent !important;
 }
 

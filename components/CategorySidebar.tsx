@@ -83,7 +83,7 @@ export default function CategorySidebar({ categories, initiallyOpen = false }: C
                 type="button"
                 onClick={closeSidebar}
                 aria-label="Close category menu"
-                className="topbar-account-action inline-flex h-10 w-10 items-center justify-center rounded-full border transition"
+                className="category-sidebar-action topbar-account-action inline-flex h-10 w-10 items-center justify-center rounded-full border transition"
               >
                 <svg
                   aria-hidden="true"

@@ -35,6 +35,8 @@ export default function HomeDealCheckMiniCard({
           <UserImage
             src={thumbnailUrl}
             alt=""
+            width={120}
+            height={90}
             sizes="60px"
             className="h-full w-full object-cover"
           />

@@ -19,5 +19,5 @@ export default async function PostDealPage() {
     redirect("/auth?mode=signup&next=/post");
   }
 
-  return <PostClient />;
+  return <PostClient draftScope={user.id} />;
 }

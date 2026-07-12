@@ -15,16 +15,27 @@
       "required": true,
       "unique": true
     },
-    "profileAvatarUrl": {
+    "ownerUsername": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "ownerEmail": {
+      "type": "email"
+    },
+    "avatarUrl": {
       "type": "text"
     },
-    "profileUserName": {
+    "displayName": {
       "type": "string",
-      "minLength": 5,
-      "maxLength": 80,
+      "maxLength": 48
+    },
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 24,
       "unique": true
     },
-    "profileBio": {
+    "bio": {
       "type": "text"
     },
     "theme": {

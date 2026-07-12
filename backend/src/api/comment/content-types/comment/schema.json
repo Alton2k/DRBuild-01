@@ -34,15 +34,30 @@
       "type": "text",
       "required": true
     },
+    "editedAt": {
+      "type": "datetime"
+    },
+    "reportCount": {
+      "type": "integer",
+      "default": 0
+    },
+    "submissionKey": {
+      "type": "string",
+      "unique": true,
+      "private": true
+    },
+    "reports": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::comment-report.comment-report",
+      "mappedBy": "comment"
+    },
     "likeCount": {
       "type": "integer",
       "default": 0
     },
     "likedBy": {
       "type": "json"
-    },
-    "test": {
-      "type": "text"
     }
   }
 }

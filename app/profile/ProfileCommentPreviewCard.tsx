@@ -8,6 +8,7 @@ import RunningTime from "@/components/RunningTime";
 import UserImage from "@/components/UserImage";
 import type { ProfileComment } from "@/lib/comments";
 import { formatMyrPrice } from "@/lib/formatters";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 export default function ProfileCommentPreviewCard({
   comment,
@@ -20,15 +21,26 @@ export default function ProfileCommentPreviewCard({
   const [viewerHasLiked, setViewerHasLiked] = useState(comment.viewerHasLiked);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [isPending, startTransition] = useTransition();
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuId = `profile-comment-actions-${comment.id}`;
   const thumbnailUrl =
     comment.dealImageGalleryUrls[0] || comment.dealImageUrl || comment.dealUploadedImageUrl;
   const categoryLabel = comment.dealSubCategory || comment.dealCategory;
-  const dealHref = comment.dealStatus === "approved" ? `/deal/${comment.dealId}` : "";
-  const commentsHref = dealHref && !comment.dealIsExpired ? `${dealHref}#comments` : "";
+  const dealHref = comment.dealAvailable && comment.dealStatus === "approved" ? `/deal/${comment.dealId}` : "";
+  const commentsHref = dealHref ? `${dealHref}#comments` : "";
+  const availabilityLabel = !comment.dealAvailable
+    ? "Deal unavailable"
+    : comment.dealStatus === "rejected"
+      ? "Deal rejected"
+      : comment.dealStatus === "pending"
+        ? "Awaiting moderation"
+        : comment.dealIsExpired
+          ? "Expired"
+          : "";
   const dealPreview = (
     <div
       className={`flex min-w-0 items-center gap-4 md:justify-end ${
@@ -37,7 +49,7 @@ export default function ProfileCommentPreviewCard({
     >
       <div className="flex h-24 w-32 shrink-0 items-center justify-center overflow-hidden">
         {thumbnailUrl ? (
-          <UserImage src={thumbnailUrl} alt="" className="h-full w-full object-contain" />
+          <UserImage src={thumbnailUrl} alt="" width={320} height={240} className="h-full w-full object-contain" />
         ) : (
           <span className="px-3 text-center text-xs font-bold text-slate-400">No image</span>
         )}
@@ -59,9 +71,9 @@ export default function ProfileCommentPreviewCard({
         {comment.dealPrice > 0 ? (
           <p className="mt-2 text-sm font-black text-[#dc115e]">{formatMyrPrice(comment.dealPrice)}</p>
         ) : null}
-        {comment.dealIsExpired ? (
+        {availabilityLabel ? (
           <span className="mt-2 inline-flex rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-            Expired
+            {availabilityLabel}
           </span>
         ) : null}
         {categoryLabel ? (
@@ -83,7 +95,9 @@ export default function ProfileCommentPreviewCard({
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         setIsMenuOpen(false);
+        window.requestAnimationFrame(() => menuButtonRef.current?.focus());
       }
     };
 
@@ -124,15 +138,20 @@ export default function ProfileCommentPreviewCard({
     });
   };
 
-  const deleteComment = () => {
+  const requestDeleteComment = () => {
     if (!comment.canDelete || isDeleting) {
       setActionMessage("Only your own comments can be deleted.");
       setIsMenuOpen(false);
       return;
     }
 
-    setIsDeleting(true);
     setIsMenuOpen(false);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const deleteComment = () => {
+    if (!comment.canDelete || isDeleting) return;
+    setIsDeleting(true);
     setActionMessage("");
 
     startTransition(async () => {
@@ -140,6 +159,7 @@ export default function ProfileCommentPreviewCard({
 
       if (!result.ok) {
         setIsDeleting(false);
+        setIsDeleteConfirmOpen(false);
         setActionMessage("Could not delete this comment. Please try again.");
         return;
       }
@@ -156,9 +176,9 @@ export default function ProfileCommentPreviewCard({
           <button
             type="button"
             onClick={toggleLike}
-            disabled={isPending || isDeleting || !commentsHref}
+            disabled={isPending || isDeleting || !commentsHref || comment.dealIsExpired}
             aria-pressed={viewerHasLiked}
-            className={`comment-action-button inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            className={`comment-action-button inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
               viewerHasLiked ? "profile-comment-action-active" : ""
             }`}
           >
@@ -168,20 +188,21 @@ export default function ProfileCommentPreviewCard({
           {commentsHref ? (
             <Link
               href={commentsHref}
-              className="comment-action-button inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold transition"
+              className="comment-action-button inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold transition"
             >
               <CommentIcon className="h-4 w-4" />
-              <span>Comment</span>
+              <span>Discussion</span>
             </Link>
           ) : (
-            <span className="comment-action-button inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold opacity-50">
+            <span className="comment-action-button inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold opacity-50">
               <CommentIcon className="h-4 w-4" />
-              <span>Comment</span>
+              <span>Discussion unavailable</span>
             </span>
           )}
           <span className="comment-time inline-flex h-8 items-center gap-1 px-2 text-xs font-medium">
             <ClockIcon className="h-4 w-4" />
             <RunningTime timestamp={comment.createdAt} />
+            {comment.editedAt ? <span title={`Edited ${new Intl.DateTimeFormat("en-MY", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kuala_Lumpur" }).format(new Date(comment.editedAt))}`}>(edited)</span> : null}
           </span>
         </div>
         {actionMessage ? (
@@ -197,14 +218,22 @@ export default function ProfileCommentPreviewCard({
         {comment.canDelete ? (
           <>
             <button
+              ref={menuButtonRef}
               type="button"
               aria-label="Comment options"
               aria-haspopup="menu"
               aria-expanded={isMenuOpen}
               aria-controls={isMenuOpen ? menuId : undefined}
               onClick={() => setIsMenuOpen((current) => !current)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setIsMenuOpen(true);
+                  window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus());
+                }
+              }}
               disabled={isDeleting}
-              className="profile-comment-menu-button inline-flex h-9 w-9 items-center justify-center rounded-md transition focus-visible:outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
+              className="profile-comment-menu-button inline-flex h-10 w-10 items-center justify-center rounded-md transition focus-visible:outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <MoreVerticalIcon />
             </button>
@@ -212,16 +241,23 @@ export default function ProfileCommentPreviewCard({
               <div
                 id={menuId}
                 role="menu"
+                onKeyDown={(event) => {
+                  const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+                  if ((event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") && items.length > 0) {
+                    event.preventDefault();
+                    items[0].focus();
+                  }
+                }}
                 className="profile-comment-menu absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border p-1 text-sm shadow-lg"
               >
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={deleteComment}
+                  onClick={requestDeleteComment}
                   disabled={isDeleting}
                   className="profile-comment-delete-button flex w-full items-center rounded-lg px-3 py-2 text-left font-bold transition focus-visible:outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {isDeleting ? "Deleting..." : "Delete comment"}
+                  {isDeleting ? "Deleting…" : "Delete comment"}
                 </button>
               </div>
             ) : null}
@@ -235,6 +271,16 @@ export default function ProfileCommentPreviewCard({
           </span>
         )}
       </div>
+      <ConfirmDialog
+        open={isDeleteConfirmOpen}
+        title="Delete comment?"
+        description="This permanently removes the comment and its replies. This action cannot be undone."
+        confirmLabel="Delete comment"
+        pending={isDeleting}
+        onCancel={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={deleteComment}
+        returnFocusRef={menuButtonRef}
+      />
     </article>
   );
 }

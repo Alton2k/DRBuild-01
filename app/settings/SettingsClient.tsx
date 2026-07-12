@@ -6,12 +6,13 @@ import {
   AccountSettings,
   SettingsTheme,
   ToggleKey,
+  displayNameLimit,
   profileBioLimit,
   profileSettingsChangedEventName,
   profileSettingsStorageKey,
-  profileUserNameMinLength,
   togglesStorageKey,
 } from "@/lib/accountSettings";
+import { formatUserHandle, normalizeUserHandle } from "@/lib/userHandles";
 import { NotificationToggle, SmallButton, StaticField, TextInput } from "./SettingsControls";
 
 type SettingsUser = {
@@ -28,14 +29,14 @@ type SettingsClientProps = {
 
 type FormState = {
   avatarUrl: string;
+  displayName: string;
   userName: string;
   bio: string;
   email: string;
   theme: SettingsTheme;
 };
 
-type DangerAction = "deactivate" | "delete";
-type ProfileSnapshot = Pick<FormState, "avatarUrl" | "userName" | "bio">;
+type ProfileSnapshot = Pick<FormState, "avatarUrl" | "displayName" | "userName" | "bio">;
 type SaveStatus = {
   state: "idle" | "pending" | "success" | "error";
   message: string;
@@ -113,22 +114,10 @@ const privacyToggles: { key: ToggleKey; label: string; description: string }[] =
   },
 ];
 
-const dangerContent: Record<DangerAction, { title: string; description: string; confirm: string }> = {
-  deactivate: {
-    title: "Deactivate account",
-    description: "Temporarily suspend your profile and hide public activity until you sign back in.",
-    confirm: "Deactivate Account",
-  },
-  delete: {
-    title: "Delete account",
-    description: "Permanently delete your account and remove personal data that is not required for platform integrity.",
-    confirm: "Delete Account",
-  },
-};
-
 function createInitialForm(user: SettingsUser, settings: AccountSettings): FormState {
   return {
     avatarUrl: settings.profile.avatarUrl,
+    displayName: settings.profile.displayName || user.displayName,
     userName: settings.profile.userName || user.displayName,
     bio: settings.profile.bio,
     email: user.email,
@@ -139,6 +128,7 @@ function createInitialForm(user: SettingsUser, settings: AccountSettings): FormS
 function createProfileSnapshot(form: FormState): ProfileSnapshot {
   return {
     avatarUrl: form.avatarUrl,
+    displayName: form.displayName,
     userName: form.userName,
     bio: form.bio,
   };
@@ -147,6 +137,7 @@ function createProfileSnapshot(form: FormState): ProfileSnapshot {
 function isSameProfileSnapshot(left: ProfileSnapshot, right: ProfileSnapshot) {
   return (
     left.avatarUrl === right.avatarUrl &&
+    left.displayName === right.displayName &&
     left.userName === right.userName &&
     left.bio === right.bio
   );
@@ -243,8 +234,8 @@ function createCompressedAvatarDataUrl(file: File) {
 }
 
 function getInitials(name: string, email: string) {
-  const source = name || email || "DR";
-  const words = source.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
+  const source = (name || email || "DR").replace(/^@+/, "");
+  const words = source.split(/[\s._-]+/).filter(Boolean);
   return (words.length > 1 ? `${words[0][0]}${words[1][0]}` : source.slice(0, 2)).toUpperCase();
 }
 
@@ -365,18 +356,16 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
   const [form, setForm] = useState<FormState>(initialForm);
   const [savedProfile, setSavedProfile] = useState<ProfileSnapshot>(() => createProfileSnapshot(initialForm));
   const [toggles, setToggles] = useState<Record<ToggleKey, boolean>>(() => createInitialToggles(initialSettings));
-  const [modalAction, setModalAction] = useState<DangerAction | null>(null);
   const [profileSaveStatus, setProfileSaveStatus] = useState<SaveStatus>({ state: "idle", message: "" });
   const [themeSaveStatus, setThemeSaveStatus] = useState<SaveStatus>({ state: "idle", message: "" });
   const [toggleSaveStatus, setToggleSaveStatus] = useState<SaveStatus>({ state: "idle", message: "" });
   const [pendingToggleKey, setPendingToggleKey] = useState<ToggleKey | null>(null);
 
-  const initials = getInitials(form.userName, form.email);
-  const modal = modalAction ? dangerContent[modalAction] : null;
+  const initials = getInitials(form.displayName, form.email);
   const joinedSince = useMemo(() => formatJoinedSince(user.joinedAt), [user.joinedAt]);
   const currentProfile = createProfileSnapshot(form);
   const profileIsDirty = !isSameProfileSnapshot(currentProfile, savedProfile);
-  const usernameIsTooShort = form.userName.trim().length < profileUserNameMinLength;
+  const normalizedHandle = normalizeUserHandle(form.userName);
 
   function updateForm<Key extends keyof FormState>(key: Key, value: FormState[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -384,9 +373,7 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
 
   async function saveProfile() {
     const nextProfile = createProfileSnapshot(form);
-    const nextUserName = nextProfile.userName.trim();
-    const usernameChanged = nextUserName !== savedProfile.userName;
-    const profilePatchWithoutUserName: Partial<ProfileSnapshot> = {};
+    const profilePatch: Partial<ProfileSnapshot> = {};
 
     if (nextProfile.avatarUrl && nextProfile.avatarUrl.length > avatarDataUrlLimit) {
       setProfileSaveStatus({
@@ -397,29 +384,23 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
     }
 
     if (nextProfile.avatarUrl !== savedProfile.avatarUrl) {
-      profilePatchWithoutUserName.avatarUrl = nextProfile.avatarUrl;
+      profilePatch.avatarUrl = nextProfile.avatarUrl;
+    }
+
+    if (nextProfile.displayName.trim() !== savedProfile.displayName) {
+      profilePatch.displayName = nextProfile.displayName.trim();
     }
 
     if (nextProfile.bio !== savedProfile.bio) {
-      profilePatchWithoutUserName.bio = nextProfile.bio;
+      profilePatch.bio = nextProfile.bio;
     }
 
-    if (usernameChanged && nextUserName.length < profileUserNameMinLength) {
-      if (Object.keys(profilePatchWithoutUserName).length === 0) {
-        setProfileSaveStatus({
-          state: "error",
-          message: `Username must be at least ${profileUserNameMinLength} characters long.`,
-        });
-        return;
-      }
-    }
-
-    setProfileSaveStatus({ state: "pending", message: "Saving profile..." });
+    setProfileSaveStatus({ state: "pending", message: "Saving profile…" });
 
     let savedSnapshot = savedProfile;
 
-    if (Object.keys(profilePatchWithoutUserName).length > 0) {
-      const result = await saveAccountSettingsAction({ profile: profilePatchWithoutUserName });
+    if (Object.keys(profilePatch).length > 0) {
+      const result = await saveAccountSettingsAction({ profile: profilePatch });
 
       if (!result.ok || !result.settings) {
         setProfileSaveStatus({ state: "error", message: result.message });
@@ -429,54 +410,16 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
       savedSnapshot = {
         ...savedSnapshot,
         avatarUrl: result.settings.profile.avatarUrl,
-        bio: result.settings.profile.bio,
-      };
-    }
-
-    if (usernameChanged && nextUserName.length < profileUserNameMinLength) {
-      setForm((current) => ({
-        ...current,
-        avatarUrl: savedSnapshot.avatarUrl,
-        bio: savedSnapshot.bio,
-      }));
-      setSavedProfile(savedSnapshot);
-      localStorage.setItem(profileSettingsStorageKey, JSON.stringify(savedSnapshot));
-      window.dispatchEvent(new Event(profileSettingsChangedEventName));
-      setProfileSaveStatus({
-        state: "error",
-        message: `Profile saved, but username must be at least ${profileUserNameMinLength} characters long.`,
-      });
-      return;
-    }
-
-    if (usernameChanged) {
-      const result = await saveAccountSettingsAction({ profile: { userName: nextUserName } });
-
-      if (!result.ok || !result.settings) {
-        setForm((current) => ({
-          ...current,
-          avatarUrl: savedSnapshot.avatarUrl,
-          bio: savedSnapshot.bio,
-        }));
-        setSavedProfile(savedSnapshot);
-        localStorage.setItem(profileSettingsStorageKey, JSON.stringify(savedSnapshot));
-        window.dispatchEvent(new Event(profileSettingsChangedEventName));
-        setProfileSaveStatus({
-          state: "error",
-          message: savedSnapshot === savedProfile ? result.message : `Profile saved, but ${result.message.toLowerCase()}`,
-        });
-        return;
-      }
-
-      savedSnapshot = {
-        ...savedSnapshot,
+        displayName: result.settings.profile.displayName,
         userName: result.settings.profile.userName,
+        bio: result.settings.profile.bio,
       };
     }
 
     setForm((current) => ({
       ...current,
       avatarUrl: savedSnapshot.avatarUrl,
+      displayName: savedSnapshot.displayName,
       userName: savedSnapshot.userName,
       bio: savedSnapshot.bio,
     }));
@@ -492,7 +435,7 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
 
     setToggles(nextToggles);
     setPendingToggleKey(key);
-    setToggleSaveStatus({ state: "pending", message: "Saving preferences..." });
+    setToggleSaveStatus({ state: "pending", message: "Saving preferences…" });
     const result = await saveAccountSettingsAction({ toggles: nextToggles });
     setPendingToggleKey(null);
 
@@ -551,7 +494,7 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
 
     updateForm("theme", theme);
     applyTheme(theme);
-    setThemeSaveStatus({ state: "pending", message: "Saving appearance..." });
+    setThemeSaveStatus({ state: "pending", message: "Saving appearance…" });
     const result = await saveAccountSettingsAction({ theme });
 
     if (!result.ok || !result.settings) {
@@ -600,12 +543,12 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                         <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-[#ff1b72] text-3xl font-black text-white shadow-sm">
                           {form.avatarUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={form.avatarUrl} alt="" className="h-full w-full object-cover" />
+                            <img src={form.avatarUrl} alt="" width={112} height={112} className="h-full w-full object-cover" />
                           ) : (
                             initials
                           )}
                         </div>
-                        <label className="absolute bottom-1 right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white shadow-sm transition hover:bg-[#dc115e]">
+                        <label className="absolute bottom-1 right-1 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white shadow-sm transition hover:bg-[#dc115e]">
                           <span className="sr-only">Change profile picture</span>
                           <svg
                             aria-hidden="true"
@@ -645,19 +588,18 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                   <div className="grid w-full max-w-2xl gap-5">
                     <div className="space-y-2">
                       <TextInput
-                        label="Username"
+                        label="Display Name"
                         size="compact"
-                        value={form.userName}
-                        minLength={profileUserNameMinLength}
+                        value={form.displayName}
+                        maxLength={displayNameLimit}
                         showEditIcon
-                        onChange={(value) => updateForm("userName", value)}
+                        onChange={(value) => updateForm("displayName", value)}
                       />
-                      {usernameIsTooShort ? (
-                        <p className="text-xs font-semibold text-rose-600">
-                          Minimum {profileUserNameMinLength} characters.
-                        </p>
-                      ) : null}
+                      <p className="text-xs font-semibold text-slate-500">
+                        This is the name shown on your profile, posts, and comments.
+                      </p>
                     </div>
+                    <StaticField label="Username" value={normalizedHandle ? formatUserHandle(normalizedHandle) : "Not set"} />
                     <div className="space-y-2">
                       <TextInput label="Bio" size="compact" value={form.bio} maxLength={profileBioLimit} showEditIcon onChange={(value) => updateForm("bio", value)} />
                       <p className="text-right text-xs font-semibold text-slate-500">
@@ -684,7 +626,7 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                           disabled={profileSaveStatus.state === "pending"}
                           onClick={saveProfile}
                         >
-                          {profileSaveStatus.state === "pending" ? "Saving..." : "Save Settings"}
+                          {profileSaveStatus.state === "pending" ? "Saving…" : "Save Settings"}
                         </SmallButton>
                       </div>
                     ) : null}
@@ -774,7 +716,7 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                       enabled={toggles[item.key]}
                       label={item.label}
                       description={item.description}
-                      disabled={pendingToggleKey === item.key}
+                      disabled={pendingToggleKey !== null}
                       onChange={(enabled) => updateToggle(item.key, enabled)}
                     />
                   ))}
@@ -810,7 +752,7 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                       enabled={toggles[item.key]}
                       label={item.label}
                       description={item.description}
-                      disabled={pendingToggleKey === item.key}
+                      disabled={pendingToggleKey !== null}
                       onChange={(enabled) => updateToggle(item.key, enabled)}
                     />
                   ))}
@@ -843,37 +785,16 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                   <div className="flex flex-col gap-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-black text-slate-950">Password</p>
-                      <p className="mt-1 text-sm text-slate-500">Last changed June 2, 2026</p>
-                    </div>
-                    <div className="sm:shrink-0">
-                      <SmallButton>Change Password</SmallButton>
+                      <p className="mt-1 text-sm text-slate-500">Password changes and recovery are not available in the current first-party account workflow.</p>
                     </div>
                   </div>
 
-                  {[
-                    {
-                      action: "deactivate" as const,
-                      title: "Deactivate Account",
-                      description: "Temporarily suspend your profile and hide public activity.",
-                    },
-                    {
-                      action: "delete" as const,
-                      title: "Delete Account",
-                      description: "Permanently delete your account and personal profile data.",
-                    },
-                  ].map((item) => (
-                    <div key={item.action} className="flex flex-col gap-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-black text-rose-950">{item.title}</p>
-                        <p className="mt-1 text-sm text-rose-700">{item.description}</p>
-                      </div>
-                      <div className="sm:shrink-0">
-                        <SmallButton variant="danger" onClick={() => setModalAction(item.action)}>
-                          {item.action === "deactivate" ? "Deactivate" : "Delete"}
-                        </SmallButton>
-                      </div>
-                    </div>
-                  ))}
+                  <div className="settings-danger-note mt-2 border-t border-rose-200 py-4 text-sm leading-6 text-rose-800">
+                    <p className="font-black text-rose-950">Account deactivation and deletion</p>
+                    <p className="mt-1">
+                      These actions are not available yet. They will appear here only when Deal Rakyat can safely complete the full first-party workflow.
+                    </p>
+                  </div>
                 </div>
               </div>
             </section>
@@ -881,30 +802,6 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
         </div>
       </div>
 
-      {modal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="danger-modal-title" className="settings-modal w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-5 shadow-2xl">
-            <h2 id="danger-modal-title" className="text-xl font-black tracking-tight text-slate-950">
-              {modal.title}
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{modal.description}</p>
-            <div className="settings-danger-note mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">
-              Confirmation is required before this action can continue.
-            </div>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <SmallButton onClick={() => setModalAction(null)}>Cancel</SmallButton>
-              <SmallButton
-                variant="danger"
-                onClick={() => {
-                  setModalAction(null);
-                }}
-              >
-                {modal.confirm}
-              </SmallButton>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

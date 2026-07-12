@@ -3,6 +3,15 @@ import type { Core } from '@strapi/strapi';
 
 const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Database => {
   const client = env('DATABASE_CLIENT', env('DATABASE_URL') ? 'postgres' : 'sqlite');
+  const isProduction = env('NODE_ENV', 'development') === 'production';
+
+  if (isProduction && client !== 'postgres') {
+    throw new Error('Production requires DATABASE_CLIENT=postgres. Refusing to start with a local database.');
+  }
+
+  if (client === 'postgres' && !env('DATABASE_URL') && isProduction) {
+    throw new Error('Production requires DATABASE_URL. Refusing to start without an explicit PostgreSQL connection.');
+  }
 
   const connections = {
     mysql: {
@@ -31,7 +40,7 @@ const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Database 
         database: env('DATABASE_NAME', 'strapi'),
         user: env('DATABASE_USERNAME', 'strapi'),
         password: env('DATABASE_PASSWORD', 'strapi'),
-        ssl: env.bool('DATABASE_SSL', false) && {
+        ssl: env.bool('DATABASE_SSL', Boolean(env('DATABASE_URL'))) && {
           key: env('DATABASE_SSL_KEY', undefined),
           cert: env('DATABASE_SSL_CERT', undefined),
           ca: env('DATABASE_SSL_CA', undefined),

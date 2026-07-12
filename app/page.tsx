@@ -786,8 +786,9 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                   Deals are temporarily unavailable
                 </h3>
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-700">
-                  Please try again later.
+                  Check your connection, then try loading these deals again.
                 </p>
+                <a href={createHomeHref({ q, category, subCategory, feed, period, page })} className="post-primary-button mt-5 inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-bold">Try again</a>
               </div>
             ) : visibleDealsWithCommentCounts.length > 0 ? (
               <div className="home-deal-grid grid gap-4">

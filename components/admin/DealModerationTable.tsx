@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { deleteDealAction, moderateDealAction, restoreReportedDealAction } from "@/app/actions";
 import { formatMyrPrice } from "@/lib/formatters";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type DealStatus = "pending" | "approved" | "rejected";
 type ModerationFilter = "all" | DealStatus | "expired" | "reported" | "risk";
@@ -79,6 +81,7 @@ const formatDate = (timestamp: string) => {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Kuala_Lumpur",
   }).format(new Date(timestamp));
 };
 
@@ -126,12 +129,20 @@ interface DealModerationTableProps {
  * Renders a moderation table backed by Server Actions.
  */
 export default function DealModerationTable({ initialDeals }: DealModerationTableProps) {
+  const router = useRouter();
+  const refreshAdminOverview = (notice: string) => {
+    const refresh = new URLSearchParams(window.location.search).get("refresh") === "1" ? "0" : "1";
+    router.replace(`/admin?notice=${notice}&refresh=${refresh}#deals`, { scroll: false });
+  };
   const [deals, setDeals] = useState<DealModerationRow[]>(initialDeals);
   const [activeFilter, setActiveFilter] = useState<ModerationFilter>("all");
   const [sortMode, setSortMode] = useState<ModerationSort>("priority");
   const [searchValue, setSearchValue] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState("");
   const [isPending, startTransition] = useTransition();
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
 
   const filterCounts = useMemo(() => {
     return deals.reduce(
@@ -207,39 +218,61 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
 
   const handleModerate = (id: string, status: DealStatus) => {
     setPendingId(id);
+    setStatusMessage("");
     startTransition(async () => {
-      await moderateDealAction(id, status);
-      updateDeal(id, { status, moderationReason: `admin_manual_${status}` });
-      setPendingId(null);
+      try {
+        await moderateDealAction(id, status);
+        updateDeal(id, { status, moderationReason: `admin_manual_${status}` });
+        refreshAdminOverview(`deal-${status}`);
+      } catch {
+        setStatusMessage("Could not update this deal. Please try again.");
+      } finally {
+        setPendingId(null);
+      }
     });
   };
 
   const handleDelete = (id: string) => {
     setPendingId(id);
+    setStatusMessage("");
     startTransition(async () => {
-      await deleteDealAction(id);
-      setDeals((current) => current.filter((deal) => deal.id !== id));
-      setPendingId(null);
+      try {
+        await deleteDealAction(id);
+        setDeals((current) => current.filter((deal) => deal.id !== id));
+        refreshAdminOverview("deal-deleted");
+      } catch {
+        setStatusMessage("Could not delete this deal. Please try again.");
+      } finally {
+        setPendingId(null);
+        setDeleteConfirmId(null);
+      }
     });
   };
 
   const handleRestore = (id: string) => {
     setPendingId(id);
+    setStatusMessage("");
     startTransition(async () => {
-      await restoreReportedDealAction(id);
-      updateDeal(id, {
-        status: "approved",
-        moderationReason: "admin_restored_reported",
-        isExpired: false,
-        expiredAt: undefined,
-        reportCount: 0,
-      });
-      setPendingId(null);
+      try {
+        await restoreReportedDealAction(id);
+        updateDeal(id, {
+          status: "approved",
+          moderationReason: "admin_restored_reported",
+          isExpired: false,
+          expiredAt: undefined,
+          reportCount: 0,
+        });
+        refreshAdminOverview("deal-restored");
+      } catch {
+        setStatusMessage("Could not restore this deal. Please try again.");
+      } finally {
+        setPendingId(null);
+      }
     });
   };
 
   return (
-    <section id="deals" className="space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <section id="deals" className="space-y-6 border-t border-slate-200 pt-6 sm:pt-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
@@ -274,6 +307,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
           </select>
         </div>
       </div>
+      {statusMessage ? <p className={`theme-alert px-4 py-3 text-sm font-semibold ${statusMessage.startsWith("Could not") ? "theme-alert-warning" : "theme-alert-success"}`} role="status">{statusMessage}</p> : null}
 
       <div className="flex flex-wrap gap-2" aria-label="Moderation filters">
         {filterOrder.map((filter) => {
@@ -284,7 +318,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
               key={filter}
               type="button"
               onClick={() => setActiveFilter(filter)}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
+              className={`admin-filter-control inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
                 isActive
                   ? "border-slate-900 bg-slate-950 text-white shadow-sm"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
@@ -303,8 +337,8 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
         })}
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
-        <div className="hidden grid-cols-7 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 sm:grid">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+        <div className="hidden grid-cols-7 gap-4 border-b border-slate-200 bg-slate-100 px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 lg:grid">
           <div className="col-span-2">Deal</div>
           <div>Store</div>
           <div>Submitted by</div>
@@ -322,7 +356,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
               const rowPending = isPending && pendingId === deal.id;
               const hasReports = deal.reportCount > 0;
               const rowClassName = [
-                "group flex flex-col gap-4 border-b border-slate-200 px-5 py-6 transition sm:grid sm:grid-cols-7 sm:items-center sm:gap-4 sm:px-6",
+                "group flex flex-col gap-4 border-b border-slate-200 px-5 py-6 transition lg:grid lg:grid-cols-7 lg:items-center lg:gap-4 lg:px-6",
                 hasReports || deal.isExpired ? "border-l-4" : "",
                 hasReports
                   ? "border-l-amber-500 bg-amber-50/70"
@@ -336,7 +370,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                   key={deal.id}
                   className={rowClassName}
                 >
-                  <div className="sm:col-span-2">
+                  <div className="lg:col-span-2">
                     <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
                       <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-1">
                         #{deal.id.slice(0, 8)}
@@ -366,15 +400,15 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                     <p className="mt-2 text-sm text-slate-600">{formatMyrPrice(deal.price, 0)} - {deal.store}</p>
                   </div>
                   <div className="space-y-2 text-sm text-slate-700">
-                    <div className="hidden text-slate-500 sm:block">Store</div>
+                    <div className="hidden text-slate-500 lg:block">Store</div>
                     <p>{deal.store}</p>
                   </div>
                   <div className="space-y-2 text-sm text-slate-700">
-                    <div className="hidden text-slate-500 sm:block">Submitted by</div>
+                    <div className="hidden text-slate-500 lg:block">Submitted by</div>
                     <p className="font-medium text-slate-900">{deal.user}</p>
                   </div>
                   <div className="space-y-2 text-sm text-slate-700">
-                    <div className="hidden text-slate-500 sm:block">Submitted</div>
+                    <div className="hidden text-slate-500 lg:block">Submitted</div>
                     <p>{formatDate(deal.submittedAt)}</p>
                     <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] ${statusStyles[deal.status]}`}>
                       {deal.status}
@@ -398,7 +432,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                     </span>
                   </div>
                   <div className="space-y-2 text-sm text-slate-700">
-                    <div className="hidden text-slate-500 sm:block">Reports</div>
+                    <div className="hidden text-slate-500 lg:block">Reports</div>
                     <p
                       className={
                         hasReports
@@ -429,12 +463,12 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       </div>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap gap-2 text-sm sm:justify-end">
+                  <div className="admin-moderation-actions flex flex-wrap gap-2 text-sm lg:justify-end">
                     <button
                       type="button"
                       onClick={() => handleModerate(deal.id, "approved")}
                       disabled={rowPending}
-                      className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center justify-center rounded-2xl bg-emerald-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Approve
                     </button>
@@ -442,7 +476,7 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       type="button"
                       onClick={() => handleModerate(deal.id, "rejected")}
                       disabled={rowPending}
-                      className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center justify-center rounded-2xl bg-rose-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Reject
                     </button>
@@ -450,15 +484,18 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
                       type="button"
                       onClick={() => handleRestore(deal.id)}
                       disabled={rowPending || (deal.reportCount === 0 && !deal.isExpired)}
-                      className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center justify-center rounded-2xl bg-sky-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Restore
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(deal.id)}
+                      onClick={(event) => {
+                        deleteTriggerRef.current = event.currentTarget;
+                        setDeleteConfirmId(deal.id);
+                      }}
                       disabled={rowPending}
-                      className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Delete
                     </button>
@@ -469,6 +506,16 @@ export default function DealModerationTable({ initialDeals }: DealModerationTabl
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={Boolean(deleteConfirmId)}
+        title="Permanently delete deal?"
+        description="This removes the deal and its related activity. This action cannot be undone."
+        confirmLabel="Delete permanently"
+        pending={isPending && pendingId === deleteConfirmId}
+        onCancel={() => setDeleteConfirmId(null)}
+        onConfirm={() => { if (deleteConfirmId) handleDelete(deleteConfirmId); }}
+        returnFocusRef={deleteTriggerRef}
+      />
     </section>
   );
 }

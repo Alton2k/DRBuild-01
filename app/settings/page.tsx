@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { createDefaultAccountSettings } from "@/lib/accountSettings";
-import { getAccountSettingsForUser } from "@/lib/userSettings";
+import { ensureAccountSettingsForUser } from "@/lib/userSettings";
 import SettingsClient from "./SettingsClient";
 
 export const dynamic = "force-dynamic";
@@ -23,9 +23,10 @@ export default async function SettingsPage() {
   }
 
   const displayName = getDisplayName(user);
-  const settings = await getAccountSettingsForUser(user.id, displayName).catch(() =>
-    createDefaultAccountSettings(displayName),
-  );
+  const settings = await ensureAccountSettingsForUser(user.id, displayName, user.user_metadata.name ?? displayName, {
+    ownerUsername: user.user_metadata.name ?? displayName,
+    email: user.email ?? "",
+  }).catch(() => createDefaultAccountSettings(displayName));
 
   return (
     <SettingsClient

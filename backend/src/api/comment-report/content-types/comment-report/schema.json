@@ -1,0 +1,39 @@
+{
+  "kind": "collectionType",
+  "collectionName": "comment_reports",
+  "info": {
+    "singularName": "comment-report",
+    "pluralName": "comment-reports",
+    "displayName": "Comment Report"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "comment": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::comment.comment",
+      "inversedBy": "reports"
+    },
+    "commentDocumentId": {
+      "type": "string",
+      "required": true
+    },
+    "viewerId": {
+      "type": "string",
+      "required": true
+    },
+    "reason": {
+      "type": "enumeration",
+      "enum": ["spam", "harassment", "misinformation", "unsafe", "other"],
+      "required": true
+    },
+    "reportKey": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "private": true
+    }
+  }
+}

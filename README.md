@@ -15,8 +15,8 @@ Backend:
 
 - Strapi `5.44.0`
 - `@strapi/plugin-users-permissions` `5.44.0`
-- Local Strapi database: SQLite through `better-sqlite3` `12.8.0`
-- Live Strapi database: PostgreSQL through `pg`
+- Shared development and live Strapi database: PostgreSQL through `pg`
+- Optional throwaway local database: SQLite through `better-sqlite3` `12.8.0`
 
 Auth:
 
@@ -34,13 +34,21 @@ Auth:
 - Deal image galleries, shipping cost, expiration time, and rich descriptions
 - Automated duplicate, link safety, content risk, and moderation checks
 - Anonymous deal voting with transactional score updates
-- Threaded comments with likes and ownership-based deletion
+- Threaded comments with likes, inline owner editing, edited indicators, and ownership-based deletion
 - Deal reporting with duplicate-report and rate-limit protection
+- Comment reporting with reasons, rate limits, database-backed duplicate protection, and admin visibility
 - Saved deals for signed-in users
-- Profile activity for posted deals, saved deals, comments, vote stats, and follow counts
+- Keyboard-accessible member autocomplete with live result announcements and complete loading, empty, and API-error states
+- Paginated profile activity for posted deals, saved deals, complete comment history, vote stats, and follow counts
+- Owner editing for submitted deals with full validation and moderation resubmission
+- Browser-local deal drafts with refresh recovery and unsaved-navigation warnings
 - Public member profiles with profile privacy controls and follow/unfollow support
-- Account settings for avatar, username, bio, theme, notifications, and privacy preferences
+- Complete follower and following lists on the signed-in member's own profile, with private profiles kept non-navigable
+- Automatic profile creation when a website account is registered
+- Account settings for avatar, editable display name, permanent `@username`, bio, theme, notifications, and privacy preferences
 - Admin moderation for deals, reports, comments, and users
+- Focus-trapped application dialogs before destructive deal and comment deletion
+- Keyboard-accessible member autocomplete, skip navigation, larger interaction targets, and field-specific authentication errors
 - Sitemap, robots rules, canonical metadata, and Open Graph branding
 - About, contact, privacy, terms, community rules, and affiliate disclosure pages
 
@@ -51,29 +59,33 @@ Use this section if an AI assistant is setting up the project on another compute
 Important:
 
 - Do not commit `.env.local` or `backend/.env`.
-- Ask the project owner privately for `DATABASE_URL` and `STRAPI_API_TOKEN`.
+- If this computer should use the existing project data, copy the existing `backend/.env` from the project owner or previous machine.
+- Ask the project owner privately for `DATABASE_URL`, Strapi secret values, and `STRAPI_API_TOKEN`.
 - The frontend runs from the project root.
 - The Strapi backend runs from `backend/`.
-- Local development can use Neon PostgreSQL through `DATABASE_URL`.
+- Local development can use the shared Neon PostgreSQL database through `DATABASE_URL`.
+- Use SQLite only for throwaway local testing. A new SQLite file is empty, so Strapi will ask for a new admin profile.
 
 Setup order:
 
 1. Install Node.js `24.x`.
-2. Run `npm.cmd install` in the project root.
-3. Run `npm.cmd install` inside `backend/`.
-4. Create `backend/.env` using the template in this README.
-5. Start Strapi with `npm.cmd run backend:dev`.
+2. Run `npm install` in the project root.
+3. Run `npm install` inside `backend/`.
+4. Create `backend/.env` by copying the existing project env file, or use the PostgreSQL template in this README with the real `DATABASE_URL` and Strapi secrets.
+5. Start Strapi with `npm run backend:dev`.
 6. Open `http://localhost:1337/admin`.
-7. Create or log in to the Strapi admin account.
+7. Log in to the existing Strapi admin account. If Strapi asks you to create a new admin profile, stop and check that `backend/.env` points at the existing PostgreSQL database.
 8. Create a Strapi API token.
 9. Create `.env.local` using the template in this README.
-10. Start Next.js with `npm.cmd run dev`.
+10. Start Next.js with `npm run dev`.
 11. Open `http://localhost:3000`.
+
+On Windows PowerShell, replace `npm` and `npx` with `npm.cmd` and `npx.cmd` if script execution policy blocks the default commands.
 
 ## Project Structure
 
 ```text
-D:\Web Project\DRBuild-01
+DRBuild-01/
 |- app/                  Next.js app routes and server actions
 |- components/           Next.js UI components
 |- lib/                  frontend data/auth helpers
@@ -126,28 +138,27 @@ On Windows PowerShell, use `npm.cmd` if `npm` is blocked by execution policy.
 
 From the project root:
 
-```powershell
-cd "D:\Web Project\DRBuild-01"
-npm.cmd install
+```bash
+npm install
 ```
 
 Install Strapi backend dependencies:
 
-```powershell
-cd "D:\Web Project\DRBuild-01\backend"
-npm.cmd install
+```bash
+cd backend
+npm install
 ```
 
 Return to the root:
 
-```powershell
-cd "D:\Web Project\DRBuild-01"
+```bash
+cd ..
 ```
 
 Install Playwright Chromium for the product scraper:
 
-```powershell
-npx.cmd playwright install chromium
+```bash
+npx playwright install chromium
 ```
 
 ## Environment Variables
@@ -162,7 +173,7 @@ backend/.env
 Create this frontend env file:
 
 ```text
-D:\Web Project\DRBuild-01\.env.local
+DRBuild-01/.env.local
 ```
 
 Template:
@@ -185,10 +196,10 @@ Notes:
 Create this backend env file:
 
 ```text
-D:\Web Project\DRBuild-01\backend\.env
+DRBuild-01/backend/.env
 ```
 
-Template for Neon PostgreSQL:
+For an existing project database, copy the existing `backend/.env` from the project owner or previous machine. This preserves the database connection and Strapi secrets. If you cannot copy it, use this Neon PostgreSQL template and fill in the real values:
 
 ```env
 # Server
@@ -205,9 +216,9 @@ JWT_SECRET=paste_or_generate_secret_value_here
 
 # Database
 DATABASE_CLIENT=postgres
-DATABASE_URL=postgresql://user:password@host/database?sslmode=require
+DATABASE_URL=postgresql://user:password@host/database?sslmode=verify-full
 DATABASE_SSL=true
-DATABASE_SSL_REJECT_UNAUTHORIZED=false
+DATABASE_SSL_REJECT_UNAUTHORIZED=true
 DATABASE_SCHEMA=public
 DATABASE_POOL_MIN=2
 DATABASE_POOL_MAX=10
@@ -217,16 +228,16 @@ DATABASE_CONNECTION_TIMEOUT=60000
 FRONTEND_URL=http://localhost:3000/auth?message=email-confirmed
 ```
 
-If the owner gives you an existing `backend/.env`, use that instead of generating new Strapi secret values.
+If the owner gives you an existing `backend/.env`, use that instead of generating new Strapi secret values. Do not replace an existing project database with SQLite unless you intentionally want a blank local Strapi instance.
 
-For local SQLite instead of Neon PostgreSQL, use:
+For throwaway local SQLite instead of Neon PostgreSQL, use:
 
 ```env
 DATABASE_CLIENT=sqlite
 DATABASE_FILENAME=.tmp/data.db
 ```
 
-If `DATABASE_URL` is not set, Strapi falls back to local SQLite at `backend/.tmp/data.db`.
+If `DATABASE_URL` is not set, Strapi falls back to local SQLite at `backend/.tmp/data.db`. That file starts empty, so Strapi will ask you to create a new admin profile and it will not show the shared project data.
 
 ## Running Locally
 
@@ -234,9 +245,8 @@ Use two terminals.
 
 Terminal 1, start Strapi:
 
-```powershell
-cd "D:\Web Project\DRBuild-01"
-npm.cmd run backend:dev
+```bash
+npm run backend:dev
 ```
 
 Open Strapi admin:
@@ -245,7 +255,7 @@ Open Strapi admin:
 http://localhost:1337/admin
 ```
 
-Create the first Strapi admin user.
+Log in with the existing Strapi admin account. Create the first Strapi admin only when intentionally connecting to a new blank database.
 
 Create an API token:
 
@@ -264,9 +274,8 @@ Paste that token into `.env.local` as `STRAPI_API_TOKEN`.
 
 Terminal 2, start Next.js:
 
-```powershell
-cd "D:\Web Project\DRBuild-01"
-npm.cmd run dev
+```bash
+npm run dev
 ```
 
 Open:
@@ -289,14 +298,14 @@ Create a Neon project, copy the PostgreSQL connection string, then set it as:
 DATABASE_URL=your_neon_connection_string
 DATABASE_CLIENT=postgres
 DATABASE_SSL=true
-DATABASE_SSL_REJECT_UNAUTHORIZED=false
+DATABASE_SSL_REJECT_UNAUTHORIZED=true
 ```
 
 Important:
 
 - Local SQLite data is not automatically moved to Neon.
 - When Strapi first connects to a fresh Postgres database, it creates the required tables.
-- After switching database, create a new Strapi admin user for that live backend.
+- A fresh PostgreSQL database needs a new Strapi admin user. An existing shared database keeps its existing admin users and content.
 - Create a new live Strapi API token and put it in the Next.js `STRAPI_API_TOKEN`.
 
 ## Auth Behavior
@@ -439,7 +448,18 @@ Important behavior:
 - A viewer can have only one active vote per deal.
 - Vote changes and deal score updates run in one backend transaction.
 - Duplicate votes, reports, and saved deals are protected by database constraints.
-- Comments support replies, likes, and deletion by their author.
+- Comments support replies, likes, inline owner editing, an edited indicator, and ownership-checked deletion.
+- Profile comment history exhausts backend pagination and links available records to the relevant discussion; missing, rejected, pending, and expired deals are labelled honestly.
+- Deal owners can edit submissions from their profile. The form preserves the saved category and subcategory instead of re-scraping or auto-classifying an existing deal; the server rechecks ownership and validation, non-admin edits return to pending moderation, and admin-owner edits preserve their current status.
+- Account deactivation and deletion controls are intentionally withheld with honest settings copy until their complete first-party identity and data-retention workflows are implemented.
+- Comment reports are stored separately from comments. A unique report key prevents the same viewer from reporting one comment twice, while moderation shows report counts and distinct reasons; successful moderation actions refresh the server-derived dashboard totals as well as the affected table row.
+- Comment and reply forms show live character counts, warn before page unload, preserve closed reply drafts, surface like failures, and use focus-restoring application dialogs instead of native browser confirmations.
+- Comment deletion removes the selected subtree deepest-first, cleans associated report records, and then resynchronizes the stored deal comment count; focused tests cover ordering and corrupt-cycle safety.
+- Concurrent identical comment submissions are rejected by a private account/viewer-scoped SHA-256 key with a database unique index, in addition to friendly preflight duplicate feedback.
+- Deal posting and editing save bounded, account-scoped drafts in the current browser for up to 30 days, restore them after refresh, warn on reload or in-app navigation, and clear saved data after submission or confirmed discard.
+- Deal images show a processing state, retain actionable failures, support same-file retry after processing errors, and expose removal controls for every selected image.
+- Public Terms, Privacy, Community Rules, Affiliate Disclosure, About, and Contact pages describe current first-party behavior without draft labels or fake addresses. General support and privacy requests use `support@dealrakyat.my`; formal takedown and legal notices use `legal@dealrakyat.my`.
+- Password change/recovery and destructive account actions are not presented as working controls while those out-of-scope identity workflows are unavailable.
 - Signed-in users can save deals and view them from `/profile`.
 - Voting, commenting, and reporting include basic abuse rate limiting.
 - Signed-in users can follow public member profiles when that member allows followers.
@@ -449,6 +469,8 @@ Database migrations for uniqueness constraints are stored in:
 ```text
 backend/database/migrations/
 ```
+
+The current profile migrations rename legacy profile fields, repair duplicate User Setting rows, and add ownership fields before enforcing one profile per website user. Comment editing adds a nullable `edited_at` timestamp so likes and other record updates do not incorrectly display the edited indicator.
 
 ## Deal Expiration
 
@@ -466,7 +488,7 @@ Signed-in users manage profile and preference data at `/settings`.
 
 Settings include:
 
-- Avatar, public username, and short bio
+- Avatar, editable display name, permanent public `@username`, and short bio
 - Light, dark, or system theme preference
 - Notification preference toggles
 - Privacy toggles for public profile visibility, join date, activity stats, saved deals, and followers
@@ -480,7 +502,20 @@ lib/userSettings.ts
 backend/src/api/user-setting/content-types/user-setting/schema.json
 ```
 
-Public profiles are available at `/profile/[userId]`, where `[userId]` can resolve from a profile username or fallback user identity. Follow relationships are stored in the Strapi `Follow` content type.
+Each Users & Permissions website user has exactly one `User Setting` profile. Strapi creates it automatically after account creation and backfills missing profiles when the backend starts. Database constraints and repair migrations prevent duplicate profiles for the same user.
+
+Profile identity fields have distinct purposes:
+
+```text
+displayName    Editable name shown on profiles, posts, and comments.
+username       Permanent unique public handle, displayed as @username.
+ownerUsername  Internal link to the Strapi Users & Permissions username.
+ownerEmail     Internal ownership reference used by Strapi administration.
+```
+
+The Strapi User Setting list is configured to show user ID, username, display name, owner username, and owner email so administrators can identify the account behind each profile.
+
+Public profiles are available at `/profile/[userId]`, where `[userId]` can resolve from a profile username or fallback user identity. The global search bar queries public usernames and display names, then links matching members directly to their profiles. Follow relationships are stored in the Strapi `Follow` content type.
 
 ## Public Routes
 
@@ -490,6 +525,7 @@ Main application routes:
 /             Deal feed and rankings
 /post         Submit a deal
 /deal/[id]    Deal details, voting, comments, saving, and reporting
+/deal/[id]/edit  Owner-only deal editing; non-admin changes return to moderation
 /auth         Register or log in
 /profile      Posted deals, saved deals, comments, and account details
 /profile/[id] Public member profile
@@ -514,39 +550,43 @@ SEO routes are generated by `app/sitemap.ts` and `app/robots.ts`.
 
 From project root:
 
-```powershell
-npm.cmd run dev
-npm.cmd run build
-npm.cmd run lint
-npm.cmd run typecheck
-npm.cmd run verify
-npm.cmd run backend:dev
-npm.cmd run backend:build
+```bash
+npm run dev
+npm run frontend:dev
+npm run build
+npm run lint
+npm run typecheck
+npm test
+npm run verify
+npm run backend:dev
+npm run backend:build
+npm run db:check
 ```
 
 From `backend/`:
 
-```powershell
-npm.cmd run dev
-npm.cmd run build
-npm.cmd run start
+```bash
+npm run dev
+npm run build
+npm run start
 ```
 
 ## Operational Readiness Checks
 
 Run these before handing a build to another person or deploying:
 
-```powershell
-npm.cmd run typecheck
-npm.cmd run lint
-npm.cmd run build
-npm.cmd run backend:build
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run backend:build
 ```
 
 Or run the combined root check:
 
-```powershell
-npm.cmd run verify
+```bash
+npm run verify
 ```
 
 Expected result:
@@ -554,27 +594,45 @@ Expected result:
 - Next.js compiles successfully.
 - TypeScript passes for the frontend app.
 - ESLint passes for committed frontend/shared code.
+- Focused Node tests pass for comment validation and ownership authorization.
 - Strapi compiles TypeScript and builds the admin panel.
 
 Operational notes:
 
 - Start Strapi before testing dynamic frontend flows that need data.
+- Production Strapi refuses to start without an explicit PostgreSQL `DATABASE_URL`; it will not silently create a SQLite database.
 - Keep `STRAPI_API_TOKEN`, `APP_KEYS`, `JWT_SECRET`, and database credentials out of Git.
 - Use PostgreSQL for shared, staging, and production environments. SQLite is only for local single-developer use.
 - Strapi database migrations in `backend/database/migrations/` are additive and idempotent where practical. They run through Strapi's migration system when the backend starts against a database that has not recorded them.
 - Schedule production migration runs during a quiet window. Index creation can briefly lock large tables depending on the database provider.
 - After deployment, smoke-test `/`, `/post`, `/auth`, `/profile`, `/settings`, `/admin`, and one `/deal/[id]` page.
 
+Run the read-only PostgreSQL readiness audit after Strapi has started once and applied migrations:
+
+```bash
+npm run db:check
+```
+
+It verifies required tables and indexes, duplicate votes/reports/saves/follows/profiles, missing or orphaned user profiles, and the Strapi migration table. It never modifies database content.
+
 ## Testing Strategy
 
-There is currently no unit or end-to-end test framework configured for this repository. Playwright is installed because the product metadata scraper uses it at runtime; it is not yet wired as an app test runner.
+### Mobile and Safari readiness
+
+The first-party interface uses dynamic viewport units with legacy fallbacks, safe-area-aware full-screen menus and dialogs, internally scrollable modal content, and 16px mobile form controls to avoid Safari focus zoom. Repeated compact actions expand to at least 44px on touch-first devices without changing their desktop presentation. Admin deal and comment moderation stay in the labelled stacked layout through tablet widths and switch to dense columns at 1024px.
+
+Responsive browser QA should cover 320px, 360px, 390px, 430px, 768px, landscape mobile, and desktop widths in both themes. Check navigation and search overlays, posting and rich-text selection, image inputs, comment dialogs, profile pagination and follow controls, settings, and all moderation rows. Include software-keyboard behavior, long unbroken content, reduced motion, 200% text zoom, focus restoration, and browser/server console errors.
+
+The 13 July 2026 production-browser audit covered every first-party public and authenticated route at 320px, 360px, 390px, 430px, 768px, 740×360 landscape, and 1280px desktop. It also covered the public member profile, light and dark themes, a 200% reflow approximation, keyboard member search, mobile-menu scrolling and focus return, short-landscape confirmation dialogs, reduced-height posting, stacked tablet moderation, loading states, and temporary-draft cleanup. The audited routes had no unintended page-level horizontal overflow or related browser-console errors. Final release QA should still include one pass on physical iOS Safari and Android Chrome for real safe-area, software-keyboard, file-picker, touch-pointer, and browser-zoom behavior that desktop emulation cannot reproduce exactly.
+
+Focused pure-helper regression tests use Node's built-in test runner and run with `npm test`. They currently cover comment validation boundaries, ownership, duplicate-submission keys and create-response relation fallback, safe comment-tree deletion, deal-description limits, revision-aware edit drafts, and preservation of stored deal categories during editing. Playwright is installed because the metadata scraper uses it at runtime; repeatable automated authenticated E2E tests still need a dedicated isolated user/database fixture.
 
 Recommended staged test setup:
 
-1. Add a lightweight unit test runner such as Vitest for pure helpers in `lib/`, starting with Strapi response parsing, URL safety, description sanitization, moderation validation, and account settings normalization.
-2. Add server-action unit or integration tests around posting validation, vote/report/save duplicate handling, comment validation, and admin authorization checks.
-3. Add Playwright end-to-end smoke tests after test data setup is reliable: auth, post deal, vote, save, comment, report, admin moderation, profile/settings refresh.
-4. Run tests in CI with PostgreSQL for backend flows so migration and uniqueness behavior matches production more closely than SQLite.
+1. Expand pure-helper coverage to Strapi response parsing, URL safety, description sanitization, moderation validation, and account settings normalization.
+2. Add server-action integration tests around posting validation, vote/report/save duplicate handling, and admin authorization checks.
+3. Add Playwright end-to-end smoke tests after test data setup is reliable: auth, post/edit deal, vote, save, edit/report comment, admin moderation, and profile/settings refresh.
+4. Run integration tests in CI with PostgreSQL so migration and uniqueness behavior matches production more closely than SQLite.
 
 ## Reset Local Strapi Content
 
@@ -582,14 +640,14 @@ To clear deals, comments, votes, reports, saved deals, follows, user settings, c
 
 Dry run:
 
-```powershell
-node scripts\clear-strapi-content.mjs
+```bash
+node scripts/clear-strapi-content.mjs
 ```
 
 Apply:
 
-```powershell
-node scripts\clear-strapi-content.mjs --apply
+```bash
+node scripts/clear-strapi-content.mjs --apply
 ```
 
 This does not delete Strapi content type schemas.
@@ -645,14 +703,22 @@ Strapi email confirmation error:
 
 Email verification requires a configured Strapi email provider. It is disabled for now.
 
+User Setting is missing, duplicated, or difficult to identify in Strapi Admin:
+
+1. Confirm Strapi is connected to the intended PostgreSQL database.
+2. Restart Strapi so bootstrap profile repair and Content Manager column configuration run.
+3. Check that the migration files in `backend/database/migrations/` are present and recorded by the target database.
+4. Do not manually create another User Setting row for the same `userId`; account creation and backend bootstrap manage these profiles automatically.
+
 ## Production Direction
 
 Recommended live architecture:
 
 ```text
-Next.js frontend -> Vercel
-Strapi backend -> Railway / Render / Strapi Cloud
-Database -> PostgreSQL, such as Neon / Supabase / Railway Postgres
+Cloudflare DNS
+├── dealrakyat.my -> Vercel -> Next.js
+├── api.dealrakyat.my -> Railway -> Strapi -> Neon PostgreSQL
+└── media.dealrakyat.my -> Cloudflare R2
 ```
 
 Do not use local SQLite for production.
@@ -664,3 +730,84 @@ For production Strapi:
 - Set public backend URL.
 - Set frontend `STRAPI_URL` to the deployed Strapi URL.
 - Store secrets in hosting environment variables, not in Git.
+
+## Production Deployment
+
+Deploy the backend first so the frontend can use its public URL. Keep all secrets in provider environment variables and never commit them.
+
+### 1. Strapi on Railway
+
+Create one Railway service connected to this GitHub repository:
+
+- Root Directory: `/backend`
+- Config File Path: `/backend/railway.json`
+- Generate a temporary Railway domain before configuring the frontend.
+
+Set these variables using existing production values where applicable:
+
+```text
+NODE_ENV=production
+HOST=0.0.0.0
+PUBLIC_URL=https://<temporary-strapi-domain>.up.railway.app
+IS_PROXIED=true
+FRONTEND_URL=https://dealrakyat.my/auth?message=email-confirmed
+DATABASE_CLIENT=postgres
+DATABASE_URL=<existing Neon connection string>
+DATABASE_SSL=true
+DATABASE_SSL_REJECT_UNAUTHORIZED=true
+DATABASE_SCHEMA=public
+APP_KEYS=<existing four comma-separated keys>
+API_TOKEN_SALT=<existing value>
+ADMIN_JWT_SECRET=<existing value>
+TRANSFER_TOKEN_SALT=<existing value>
+ENCRYPTION_KEY=<existing value>
+JWT_SECRET=<existing value>
+R2_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<bucket-scoped access key>
+R2_SECRET_ACCESS_KEY=<bucket-scoped secret key>
+R2_BUCKET=deal-rakyat-uploads
+R2_PUBLIC_URL=https://media.dealrakyat.my
+```
+
+Do not generate replacement Strapi secrets when connecting the existing database. Changing these values can invalidate sessions, tokens, or encrypted application data.
+
+`R2_ENDPOINT` enables the S3-compatible upload provider. When it is absent, local development continues to use Strapi's local upload provider. Production must use R2 because Railway service filesystems are ephemeral.
+
+After Strapi is healthy, open its `/admin` page and create or confirm the production API token. Copy it into Vercel as `STRAPI_API_TOKEN`; it is not a public browser variable.
+
+### 2. Next.js on Vercel
+
+Import the same repository into Vercel. Keep the project root at `/`; Vercel detects and builds Next.js directly.
+
+Set these Vercel variables:
+
+```text
+STRAPI_URL=https://<temporary-strapi-domain>.up.railway.app
+STRAPI_API_TOKEN=<production Strapi API token>
+ADMIN_EMAILS=<comma-separated website admin emails>
+NEXT_PUBLIC_SITE_URL=https://dealrakyat.my
+```
+
+`NEXT_PUBLIC_SITE_URL` is a build-time public variable, so redeploy the frontend after changing it. Keep `STRAPI_API_TOKEN` unprefixed so it is never included in browser bundles.
+
+### 3. Cloudflare R2 uploads
+
+Create the `deal-rakyat-uploads` bucket, issue a Read & Write S3 API token restricted to that bucket, and connect `media.dealrakyat.my` as its public custom domain. Do not use the rate-limited `r2.dev` URL in production. The R2 token belongs only in Railway.
+
+Add an R2 bucket CORS rule allowing `GET` from the production Strapi origin (`https://api.dealrakyat.my`). Add the temporary Railway origin during smoke testing if needed, then remove it after the custom API domain is live.
+
+After deployment, upload, view, and delete a disposable image through Strapi Media Library. Confirm its stored URL starts with `https://media.dealrakyat.my/` and remains available after a Railway redeploy.
+
+### 4. Domains and final linking
+
+Smoke-test the temporary Vercel and Railway domains before changing production DNS.
+
+1. Add `dealrakyat.my` and `www.dealrakyat.my` to Vercel. Add Vercel's exact A/CNAME records in Cloudflare and keep those records **DNS only**. Configure one hostname to redirect to the other.
+2. Add `api.dealrakyat.my` to Railway. Add both the CNAME and TXT verification records Railway supplies. If Cloudflare proxying is enabled for this API hostname, use SSL/TLS mode **Full** as required by Railway.
+3. Connect `media.dealrakyat.my` from the R2 bucket's Custom Domains settings; let Cloudflare create its managed DNS record.
+4. Change Railway `PUBLIC_URL` to `https://api.dealrakyat.my`.
+5. Change Vercel `STRAPI_URL` to `https://api.dealrakyat.my` and redeploy.
+6. Run `npm run db:check` against the production backend variables.
+7. Smoke-test `/`, `/auth`, `/post`, `/profile`, `/settings`, `/admin`, `/api/health`, one deal page, and the upload lifecycle.
+
+Keep Neon in place. Moving PostgreSQL is a separate data-migration project and is not required for this deployment.

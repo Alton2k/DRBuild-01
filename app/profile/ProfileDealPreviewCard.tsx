@@ -43,12 +43,14 @@ export default function ProfileDealPreviewCard({
   initialVote,
   initialSaved,
   voteStorageScope,
+  showOwnerActions = false,
 }: {
   deal: Deal;
   savedAt?: string;
   initialVote: DealVoteDirection | null;
   initialSaved: boolean;
   voteStorageScope?: string;
+  showOwnerActions?: boolean;
 }) {
   const hasOriginalPrice = deal.originalPrice !== null && deal.originalPrice > deal.price;
   const discountPercent = getDealDiscountPercent(deal);
@@ -87,6 +89,8 @@ export default function ProfileDealPreviewCard({
             <UserImage
               src={thumbnailUrl}
               alt=""
+              width={800}
+              height={600}
               className="absolute inset-0 h-full w-full object-contain p-3 transition duration-200 hover:scale-[1.02]"
             />
           ) : (
@@ -112,7 +116,7 @@ export default function ProfileDealPreviewCard({
               </div>
             ) : null}
             {thumbnailUrl ? (
-              <UserImage src={thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-contain p-3" />
+              <UserImage src={thumbnailUrl} alt="" width={800} height={600} className="absolute inset-0 h-full w-full object-contain p-3" />
             ) : (
               <span className="px-4 text-center text-sm font-medium text-slate-400">
                 No image submitted
@@ -159,14 +163,14 @@ export default function ProfileDealPreviewCard({
           ) : null}
 
           <div className="pt-3">
-          <div className="home-deal-card-actions flex items-center gap-1.5 border-t pt-2.5">
+          <div className="home-deal-card-actions flex flex-wrap items-center gap-1.5 border-t pt-2.5">
             <DealVoteButtons
               dealId={deal.id}
               initialScore={deal.score}
               initialVote={initialVote}
               voteStorageScope={voteStorageScope}
               disabled={deal.status !== "approved" || deal.isExpired}
-              buttonClassName="inline-flex h-6 w-6 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:h-3.5 [&_svg]:w-3.5"
+              buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:h-4 [&_svg]:w-4"
               containerClassName="inline-flex items-center gap-0.5 rounded-full border-0 bg-transparent p-0 shadow-none"
               scoreClassName="min-w-4 text-center text-xs font-bold tabular-nums"
             />
@@ -190,15 +194,23 @@ export default function ProfileDealPreviewCard({
               initialSaved={initialSaved}
               isSignedIn
               disabled={deal.status !== "approved" || deal.isExpired}
-              className="home-deal-card-icon-action inline-flex h-6 w-6 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
+              className="home-deal-card-icon-action inline-flex h-10 w-10 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
             />
             <ShareDealButton
               title={deal.title}
               href={`/deal/${deal.id}`}
               text={`Check out this deal on Deal Rakyat: ${deal.title}`}
               disabled={deal.status !== "approved" || deal.isExpired}
-              className="home-deal-card-icon-action inline-flex h-6 w-6 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
+              className="home-deal-card-icon-action inline-flex h-10 w-10 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
             />
+            {showOwnerActions ? (
+              <Link
+                href={`/deal/${deal.id}/edit`}
+                className="home-deal-card-icon-action inline-flex h-10 items-center justify-center rounded-full px-3 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
+              >
+                Edit
+              </Link>
+            ) : null}
             <span className="home-deal-card-stat ml-auto whitespace-nowrap text-[0.68rem] font-semibold">
               <RunningTime timestamp={savedAt ?? deal.createdAt} />
             </span>

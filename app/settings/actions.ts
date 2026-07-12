@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth";
 import type { AccountSettings } from "@/lib/accountSettings";
-import { profileBioLimit, profileUserNameLimit, profileUserNameMinLength } from "@/lib/accountSettings";
+import { displayNameLimit, profileBioLimit } from "@/lib/accountSettings";
 import {
   saveAccountSettingsForUser,
   type AccountSettingsPatch,
@@ -38,18 +38,14 @@ function validateSettingsPatch(patch: AccountSettingsPatch): AccountSettingsPatc
       profile.avatarUrl = patch.profile.avatarUrl;
     }
 
-    if (typeof patch.profile.userName === "string") {
-      const userName = patch.profile.userName.trim();
+    if (typeof patch.profile.displayName === "string") {
+      const displayName = patch.profile.displayName.trim();
 
-      if (userName.length > profileUserNameLimit) {
-        throw new SettingsValidationError(`Username must be ${profileUserNameLimit} characters or fewer.`);
+      if (displayName.length > displayNameLimit) {
+        throw new SettingsValidationError(`Display name must be ${displayNameLimit} characters or fewer.`);
       }
 
-      if (userName.length < profileUserNameMinLength) {
-        throw new SettingsValidationError(`Username must be at least ${profileUserNameMinLength} characters long.`);
-      }
-
-      profile.userName = userName;
+      profile.displayName = displayName;
     }
 
     if (typeof patch.profile.bio === "string") {

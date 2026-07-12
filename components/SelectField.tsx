@@ -37,6 +37,8 @@ export default function SelectField({
 }: SelectFieldProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedOption = options.find((option) => option.value === value);
   const describedBy = [
     hint ? `${id}-hint` : "",
@@ -44,6 +46,25 @@ export default function SelectField({
   ]
     .filter(Boolean)
     .join(" ");
+  const firstEnabledIndex = required && options.length > 0 ? 1 : 0;
+  const lastOptionIndex = options.length;
+
+  const focusOption = (index: number) => {
+    const bounded = Math.min(lastOptionIndex, Math.max(firstEnabledIndex, index));
+    window.requestAnimationFrame(() => optionRefs.current[bounded]?.focus());
+  };
+
+  const openFromKeyboard = (direction: "first" | "last" | "selected") => {
+    const selectedIndex = value ? options.findIndex((option) => option.value === value) + 1 : firstEnabledIndex;
+    setIsOpen(true);
+    focusOption(direction === "first" ? firstEnabledIndex : direction === "last" ? lastOptionIndex : Math.max(firstEnabledIndex, selectedIndex));
+  };
+
+  const chooseValue = (nextValue: string) => {
+    onChange(nextValue);
+    setIsOpen(false);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -70,6 +91,7 @@ export default function SelectField({
       <div ref={containerRef} className="relative">
         <input type="hidden" name={name ?? id} value={value} />
         <button
+          ref={triggerRef}
           id={id}
           type="button"
           onClick={() => {
@@ -80,6 +102,15 @@ export default function SelectField({
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               setIsOpen(false);
+            } else if (event.key === "ArrowDown") {
+              event.preventDefault();
+              openFromKeyboard("first");
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              openFromKeyboard("last");
+            } else if ((event.key === "Enter" || event.key === " ") && !isOpen) {
+              event.preventDefault();
+              openFromKeyboard("selected");
             }
           }}
           className={`post-form-field post-select-field flex h-12 w-full items-center rounded-2xl border px-4 pr-14 text-left text-sm shadow-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-80 ${
@@ -92,6 +123,7 @@ export default function SelectField({
           aria-describedby={describedBy || undefined}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
+          aria-controls={isOpen ? `${id}-options` : undefined}
           disabled={disabled}
         >
           <span className="min-w-0 truncate">{selectedOption?.label ?? "Choose an option"}</span>
@@ -114,33 +146,50 @@ export default function SelectField({
         </span>
         {isOpen ? (
           <div
+            id={`${id}-options`}
             role="listbox"
             aria-labelledby={id}
+            onKeyDown={(event) => {
+              const currentIndex = optionRefs.current.findIndex((option) => option === document.activeElement);
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setIsOpen(false);
+                triggerRef.current?.focus();
+              } else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                focusOption(currentIndex < lastOptionIndex ? currentIndex + 1 : firstEnabledIndex);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                focusOption(currentIndex > firstEnabledIndex ? currentIndex - 1 : lastOptionIndex);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                focusOption(firstEnabledIndex);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                focusOption(lastOptionIndex);
+              }
+            }}
             className="post-select-menu absolute left-0 right-0 top-[calc(100%+0.45rem)] z-30 max-h-72 overflow-auto rounded-2xl border p-1 shadow-2xl"
           >
             <button
+              ref={(element) => { optionRefs.current[0] = element; }}
               type="button"
               role="option"
               aria-selected={!value}
               disabled={required}
-              onClick={() => {
-                onChange("");
-                setIsOpen(false);
-              }}
+              onClick={() => chooseValue("")}
               className="post-select-menu-option w-full rounded-xl px-3 py-2.5 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               Choose an option
             </button>
-            {options.map((option) => (
+            {options.map((option, index) => (
               <button
+                ref={(element) => { optionRefs.current[index + 1] = element; }}
                 key={option.value}
                 type="button"
                 role="option"
                 aria-selected={option.value === value}
-                onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
-                }}
+                onClick={() => chooseValue(option.value)}
                 className="post-select-menu-option w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition"
               >
                 {option.label}

@@ -12,15 +12,18 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { checkDuplicateDealAction, createDealAction, type DuplicateDealCheckResult } from "../actions";
+import { checkDuplicateDealAction, createDealAction, updateOwnDealAction, type DuplicateDealCheckResult } from "../actions";
 import { initialDealActionState } from "../dealActionState";
 import FormContainer from "@/components/FormContainer";
 import InputField from "@/components/InputField";
 import SelectField from "@/components/SelectField";
 import UserImage from "@/components/UserImage";
 import { detectDealCategory } from "@/lib/categoryDetection";
+import { getInitialCategoryTouched } from "@/lib/dealFormCategory";
 import { categoryOptions, getCategoryByName } from "@/lib/categories";
 import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
+import { dealDescriptionMaxCharacters, dealDescriptionMaxImages, dealDescriptionMinCharacters } from "@/lib/dealDescriptionValidation";
+import { isStoredDealDraftCurrent } from "@/lib/dealDraftRevision";
 import { isProcessableDealUrl, validateDealUrl } from "@/lib/dealUrlSecurity";
 import { dealTitleMaxCharacters, getDealTitleValidationError } from "@/lib/dealTitleValidation";
 import { formatMyrPrice } from "@/lib/formatters";
@@ -45,6 +48,8 @@ type DealFormState = {
   optionalImageUrls: string[];
   imageGalleryUrls: string[];
 };
+
+export type DealFormInitialValues = Partial<DealFormState>;
 
 type FormErrors = Partial<Record<keyof DealFormState, string>>;
 type ScrapeStatus = "idle" | "fetching" | "found" | "partial" | "failed";
@@ -88,7 +93,9 @@ const maxSourceImageBytes = 8_000_000;
 const maxCompressedDataUrlLength = 110_000;
 const maxImageDimension = 820;
 const maxGalleryImages = 8;
-const maxDescriptionImages = 10;
+const maxDescriptionImages = dealDescriptionMaxImages;
+const postDraftStorageKey = "deal-rakyat:post-draft:v1";
+const postDraftMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -186,6 +193,7 @@ function formatReviewDateTime(value: string) {
   return new Intl.DateTimeFormat("en-MY", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Asia/Kuala_Lumpur",
   }).format(parsed);
 }
 
@@ -484,11 +492,16 @@ function RichDescriptionEditor({
   const [imageAlignment, setImageAlignment] = useState<"left" | "center">("left");
   const describedBy = error ? `${id}-error` : undefined;
   const descriptionImageCount = countDescriptionImages(value);
+  const descriptionTextLength = getDescriptionText(value).length;
   const imageLimitReached = descriptionImageCount >= maxDescriptionImages;
 
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
+
+    // The contenteditable surface owns its DOM while focused. Replacing its
+    // HTML during typing or drag-selection makes Safari discard the selection.
+    if (document.activeElement === editor) return;
 
     const clone = editor.cloneNode(true) as HTMLDivElement;
     clone.querySelectorAll("[data-editor-insertion-marker]").forEach((marker) => marker.remove());
@@ -527,6 +540,13 @@ function RichDescriptionEditor({
       savedSelectionRef.current = range.cloneRange();
     }
   };
+
+  useEffect(() => {
+    const handleSelectionChange = () => saveEditorSelection();
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  });
 
   const restoreEditorSelection = () => {
     const editor = editorRef.current;
@@ -586,6 +606,16 @@ function RichDescriptionEditor({
   const closeImagePopover = () => {
     removeInsertionMarker();
     setActivePopover(null);
+  };
+
+  const toggleImagePopover = () => {
+    if (activePopover === "image") {
+      closeImagePopover();
+      return;
+    }
+
+    placeInsertionMarker();
+    setActivePopover("image");
   };
 
   const runEditorCommand = (command: string, commandValue?: string) => {
@@ -664,7 +694,8 @@ function RichDescriptionEditor({
             onClick={() => runEditorCommand("bold")}
             disabled={disabled}
             aria-label="Bold"
-            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+            title="Bold"
+            className="post-rich-editor-button inline-flex h-10 min-w-10 touch-manipulation cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-bold transition [&_svg]:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RichEditorIcon name="bold" />
           </button>
@@ -673,7 +704,8 @@ function RichDescriptionEditor({
             onClick={() => runEditorCommand("strikeThrough")}
             disabled={disabled}
             aria-label="Strikethrough"
-            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+            title="Strikethrough"
+            className="post-rich-editor-button inline-flex h-10 min-w-10 touch-manipulation cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-bold transition [&_svg]:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RichEditorIcon name="strike" />
           </button>
@@ -682,7 +714,8 @@ function RichDescriptionEditor({
             onClick={() => runEditorCommand("italic")}
             disabled={disabled}
             aria-label="Italic"
-            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+            title="Italic"
+            className="post-rich-editor-button inline-flex h-10 min-w-10 touch-manipulation cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-bold transition [&_svg]:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RichEditorIcon name="italic" />
           </button>
@@ -691,7 +724,8 @@ function RichDescriptionEditor({
             onClick={() => runEditorCommand("insertUnorderedList")}
             disabled={disabled}
             aria-label="Bullet Point"
-            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+            title="Bullet list"
+            className="post-rich-editor-button inline-flex h-10 min-w-10 touch-manipulation cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-bold transition [&_svg]:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RichEditorIcon name="list" />
           </button>
@@ -700,29 +734,19 @@ function RichDescriptionEditor({
             onClick={() => runEditorCommand("insertHorizontalRule")}
             disabled={disabled}
             aria-label="Breaker Line"
-            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50"
+            title="Divider"
+            className="post-rich-editor-button inline-flex h-10 min-w-10 touch-manipulation cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-bold transition [&_svg]:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RichEditorIcon name="line" />
           </button>
           <button
             type="button"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              saveEditorSelection();
-            }}
-            onClick={() => {
-              if (activePopover === "image") {
-                closeImagePopover();
-                return;
-              }
-
-              placeInsertionMarker();
-              setActivePopover("image");
-            }}
+            onClick={toggleImagePopover}
             disabled={disabled}
             aria-label="Image"
             aria-expanded={activePopover === "image"}
-            className="post-rich-editor-button inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 data-[active=true]:bg-[#dc115e] data-[active=true]:text-white"
+            title="Insert image"
+            className="post-rich-editor-button inline-flex h-10 min-w-10 touch-manipulation cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-bold transition [&_svg]:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 data-[active=true]:bg-[#dc115e] data-[active=true]:text-white"
             data-active={activePopover === "image"}
           >
             <RichEditorIcon name="image" />
@@ -739,7 +763,7 @@ function RichDescriptionEditor({
                 type="button"
                 onClick={closeImagePopover}
                 aria-label="Close"
-                className="post-rich-editor-button inline-flex h-8 w-8 items-center justify-center rounded-xl"
+                className="post-rich-editor-button inline-flex h-10 w-10 items-center justify-center rounded-xl"
               >
                 <RichEditorIcon name="close" />
               </button>
@@ -838,6 +862,20 @@ function RichDescriptionEditor({
             {error}
           </p>
         ) : null}
+        <div
+          className={`flex items-center justify-between gap-3 text-xs font-semibold ${
+            descriptionTextLength > dealDescriptionMaxCharacters ? "text-rose-700" : descriptionTextLength < dealDescriptionMinCharacters ? "text-slate-500" : "text-emerald-700"
+          }`}
+        >
+          <span>
+            {descriptionTextLength > dealDescriptionMaxCharacters
+              ? `${descriptionTextLength - dealDescriptionMaxCharacters} over limit`
+              : descriptionTextLength < dealDescriptionMinCharacters
+                ? `${dealDescriptionMinCharacters - descriptionTextLength} more required`
+                : "Minimum met"}
+          </span>
+          <span>{descriptionTextLength} characters</span>
+        </div>
       </div>
     </div>
   );
@@ -1030,8 +1068,12 @@ function validateForm(
 
   if (!descriptionText) {
     errors.description = "Add a short description.";
-  } else if (descriptionText.length < 20) {
+  } else if (descriptionText.length < dealDescriptionMinCharacters) {
     errors.description = "Add a little more detail.";
+  } else if (descriptionText.length > dealDescriptionMaxCharacters) {
+    errors.description = `Description must be ${dealDescriptionMaxCharacters.toLocaleString("en-MY")} characters or fewer.`;
+  } else if (countDescriptionImages(values.description) > dealDescriptionMaxImages) {
+    errors.description = `Description can include up to ${dealDescriptionMaxImages} images.`;
   }
 
   if (options.requireManualImage && !values.imageUrl.trim() && !values.uploadedImageUrl.trim()) {
@@ -1091,19 +1133,45 @@ async function fetchScrapeData(url: string) {
   return response.json() as Promise<ScrapeData>;
 }
 
-export default function PostClient() {
+export default function PostClient({
+  mode = "create",
+  dealId = "",
+  initialValues = {},
+  draftScope,
+  draftRevision = "",
+}: {
+  mode?: "create" | "edit";
+  dealId?: string;
+  initialValues?: DealFormInitialValues;
+  draftScope: string;
+  draftRevision?: string;
+}) {
   const router = useRouter();
+  const startingFormRef = useRef<DealFormState>({
+    ...initialFormState,
+    ...initialValues,
+    optionalImageNames: initialValues.optionalImageNames ?? [],
+    optionalImageUrls: initialValues.optionalImageUrls ?? [],
+    imageGalleryUrls: initialValues.imageGalleryUrls ?? [],
+  });
+  const submitDealAction = mode === "edit" && dealId
+    ? updateOwnDealAction.bind(null, dealId)
+    : createDealAction;
   const [actionState, formAction, isPending] = useActionState(
-    createDealAction,
+    submitDealAction,
     initialDealActionState,
   );
-  const [form, setForm] = useState<DealFormState>(initialFormState);
+  const [form, setForm] = useState<DealFormState>(startingFormRef.current);
   const [errors, setErrors] = useState<FormErrors>({});
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetching, setIsFetching] = useState(false);
-  const [lastFetchedUrl, setLastFetchedUrl] = useState("");
+  const [lastFetchedUrl, setLastFetchedUrl] = useState(() =>
+    mode === "edit" ? startingFormRef.current.url.trim() : "",
+  );
   const [scrapeSummary, setScrapeSummary] = useState<ScrapeSummary>(initialScrapeSummary);
-  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [categoryTouched, setCategoryTouched] = useState(() =>
+    getInitialCategoryTouched(mode, startingFormRef.current.category),
+  );
   const [duplicateCheck, setDuplicateCheck] = useState<DuplicateDealCheckResult | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const [showExpirationPicker, setShowExpirationPicker] = useState(false);
@@ -1111,11 +1179,21 @@ export default function PostClient() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [showSuccessPanel, setShowSuccessPanel] = useState(false);
   const [isDiscardPromptOpen, setIsDiscardPromptOpen] = useState(false);
+  const [pendingNavigationHref, setPendingNavigationHref] = useState("");
+  const [draftWasRestored, setDraftWasRestored] = useState(false);
+  const [processingImageName, setProcessingImageName] = useState("");
+  const [hasRetryableImage, setHasRetryableImage] = useState(false);
   const [activeReviewPhotoIndex, setActiveReviewPhotoIndex] = useState(0);
   const messageRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const expirationPickerRef = useRef<HTMLDivElement>(null);
+  const discardDialogRef = useRef<HTMLElement>(null);
+  const discardCancelRef = useRef<HTMLButtonElement>(null);
+  const discardButtonRef = useRef<HTMLButtonElement>(null);
+  const discardReturnFocusRef = useRef<HTMLElement | null>(null);
+  const failedImageRef = useRef<{ file: File; kind: "product" | "optional" } | null>(null);
   const lastAutoAdvancedUrl = useRef("");
+  const descriptionValueRef = useRef(startingFormRef.current.description);
   const serverErrors = actionState.errors ?? {};
   const combinedErrors = { ...serverErrors, ...errors };
   const selectedCategory = getCategoryByName(form.category);
@@ -1135,6 +1213,10 @@ export default function PostClient() {
   const renderedGalleryBaseSlots = productImageUrl ? galleryImageCount : 1;
   const remainingVisibleGallerySlots = Math.max(0, visibleGallerySlots - renderedGalleryBaseSlots);
   const showReviewPhotoControls = submittedGalleryUrls.length > 1;
+  const draftStorageKey = mode === "edit"
+    ? `${postDraftStorageKey}:${draftScope}:edit:${dealId}`
+    : `${postDraftStorageKey}:${draftScope}`;
+  const formIsDirty = JSON.stringify(form) !== JSON.stringify(startingFormRef.current);
 
   const scrollToTop = () => {
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1159,6 +1241,10 @@ export default function PostClient() {
 
     if (field === "title" || field === "store") {
       setDuplicateCheck(null);
+    }
+
+    if (field === "description") {
+      descriptionValueRef.current = value;
     }
 
     setForm((current) => {
@@ -1203,6 +1289,9 @@ export default function PostClient() {
       imageGalleryUrls: [],
     }));
     setActiveReviewPhotoIndex(0);
+    failedImageRef.current = null;
+    setHasRetryableImage(false);
+    setProcessingImageName("");
     setScrapeSummary((current) => ({
       ...current,
       applied: current.applied.filter((field) => field !== "image"),
@@ -1258,6 +1347,7 @@ export default function PostClient() {
           title: form.title.trim(),
           url,
           store: form.store.trim() || "Online",
+          excludeDealId: mode === "edit" ? dealId : undefined,
         });
 
         if (duplicateResult.match) {
@@ -1273,7 +1363,7 @@ export default function PostClient() {
       }
       setIsFetching(false);
     }
-  }, [categoryTouched, form.store, form.title, form.url]);
+  }, [categoryTouched, dealId, form.store, form.title, form.url, mode]);
 
   useEffect(() => {
     const url = form.url.trim();
@@ -1289,17 +1379,72 @@ export default function PostClient() {
   }, [form.url, lastFetchedUrl, runFetchDetails]);
 
   useEffect(() => {
-    const handlePageHide = () => {
-      clearPostImages();
+    try {
+      const storedDraft = window.localStorage.getItem(draftStorageKey);
+      if (!storedDraft) return;
+      const stored = JSON.parse(storedDraft) as { savedAt?: number; draftRevision?: string; form?: Partial<DealFormState> } & Partial<DealFormState>;
+      if (typeof stored.savedAt === "number" && Date.now() - stored.savedAt > postDraftMaxAgeMs) {
+        window.localStorage.removeItem(draftStorageKey);
+        return;
+      }
+      if (!isStoredDealDraftCurrent(mode, draftRevision, stored.draftRevision)) {
+        window.localStorage.removeItem(draftStorageKey);
+        return;
+      }
+      const parsed = stored.form ?? stored;
+      if (!parsed || typeof parsed !== "object" || typeof parsed.url !== "string") return;
+      const restored = {
+        ...startingFormRef.current,
+        ...parsed,
+        optionalImageNames: Array.isArray(parsed.optionalImageNames) ? parsed.optionalImageNames : [],
+        optionalImageUrls: Array.isArray(parsed.optionalImageUrls) ? parsed.optionalImageUrls : [],
+        imageGalleryUrls: Array.isArray(parsed.imageGalleryUrls) ? parsed.imageGalleryUrls : [],
+      };
+      setForm(restored);
+      descriptionValueRef.current = restored.description;
+      setDraftWasRestored(true);
+    } catch {
+      window.localStorage.removeItem(draftStorageKey);
+    }
+  }, [draftRevision, draftStorageKey, mode]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        if (formIsDirty) window.localStorage.setItem(draftStorageKey, JSON.stringify({ savedAt: Date.now(), draftRevision: mode === "edit" ? draftRevision : undefined, form }));
+        else window.localStorage.removeItem(draftStorageKey);
+      } catch {
+        // Storage can be unavailable or full; the in-memory form remains usable.
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [draftRevision, draftStorageKey, form, formIsDirty, mode]);
+
+  useEffect(() => {
+    if (!formIsDirty || actionState.ok) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
     };
-
-    window.addEventListener("pagehide", handlePageHide);
-
+    const guardLinkNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      const anchor = target instanceof Element ? target.closest("a[href]") : null;
+      if (!(anchor instanceof HTMLAnchorElement) || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.origin !== window.location.origin || destination.href === window.location.href || destination.hash && destination.pathname === window.location.pathname && destination.search === window.location.search) return;
+      event.preventDefault();
+      discardReturnFocusRef.current = anchor;
+      setPendingNavigationHref(`${destination.pathname}${destination.search}${destination.hash}`);
+      setIsDiscardPromptOpen(true);
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    document.addEventListener("click", guardLinkNavigation, true);
     return () => {
-      window.removeEventListener("pagehide", handlePageHide);
-      clearPostImages();
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+      document.removeEventListener("click", guardLinkNavigation, true);
     };
-  }, [clearPostImages]);
+  }, [actionState.ok, formIsDirty]);
 
   useEffect(() => {
     const title = form.title.trim();
@@ -1314,7 +1459,12 @@ export default function PostClient() {
     const timer = window.setTimeout(async () => {
       setIsCheckingDuplicate(true);
       try {
-        const result = await checkDuplicateDealAction({ title, url, store });
+        const result = await checkDuplicateDealAction({
+          title,
+          url,
+          store,
+          excludeDealId: mode === "edit" ? dealId : undefined,
+        });
         if (!cancelled) {
           setDuplicateCheck(result.match ? result : null);
         }
@@ -1333,7 +1483,7 @@ export default function PostClient() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [form.title, form.url, form.store]);
+  }, [dealId, form.title, form.url, form.store, mode]);
 
   useEffect(() => {
     if (!actionState.message) return;
@@ -1360,7 +1510,8 @@ export default function PostClient() {
     }
 
     const timer = window.setTimeout(() => {
-      setForm(initialFormState);
+      setForm(mode === "edit" ? startingFormRef.current : initialFormState);
+      descriptionValueRef.current = mode === "edit" ? startingFormRef.current.description : initialFormState.description;
       setErrors({});
       setCurrentStep(0);
       setLastFetchedUrl("");
@@ -1368,10 +1519,11 @@ export default function PostClient() {
       setDuplicateCheck(null);
       lastAutoAdvancedUrl.current = "";
       setCategoryTouched(false);
+      window.localStorage.removeItem(draftStorageKey);
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [actionState.ok, actionState.dealId]);
+  }, [actionState.ok, actionState.dealId, draftStorageKey, mode]);
 
   useEffect(() => {
     if (activeReviewPhotoIndex < submittedGalleryUrls.length) {
@@ -1402,30 +1554,70 @@ export default function PostClient() {
   useEffect(() => {
     if (!isDiscardPromptOpen) return;
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    discardCancelRef.current?.focus();
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsDiscardPromptOpen(false);
+        setPendingNavigationHref("");
+        window.requestAnimationFrame(() => discardReturnFocusRef.current?.focus());
+        return;
+      }
+      if (event.key === "Tab") {
+        const controls = Array.from(discardDialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? []);
+        if (controls.length === 0) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
 
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [isDiscardPromptOpen]);
 
   const handlePostAnother = () => {
+    if (mode === "edit") {
+      router.push("/profile");
+      return;
+    }
+
     setShowSuccessPanel(false);
     setCurrentStep(0);
     scrollToTop();
   };
 
   const handleNext = () => {
-    const validation = validateStep(form, currentStep);
+    const latestForm =
+      currentStep === 2
+        ? { ...form, description: descriptionValueRef.current }
+        : form;
+    const validation = validateStep(latestForm, currentStep);
 
     if (Object.keys(validation).length > 0) {
       setErrors(validation);
-      scrollToTop();
+      if (currentStep === 2) {
+        window.requestAnimationFrame(() => document.getElementById("description")?.focus());
+      } else {
+        scrollToTop();
+      }
       return;
+    }
+
+    if (currentStep === 2 && form.description !== descriptionValueRef.current) {
+      setForm(latestForm);
     }
 
     if (currentStep === 0 && isCheckingDuplicate) {
@@ -1455,13 +1647,16 @@ export default function PostClient() {
   };
 
   const handleDiscard = () => {
+    discardReturnFocusRef.current = discardButtonRef.current;
     setIsDiscardPromptOpen(true);
   };
 
   const confirmDiscard = () => {
     setIsDiscardPromptOpen(false);
+    window.localStorage.removeItem(draftStorageKey);
     clearPostImages();
-    router.push("/");
+    router.push(pendingNavigationHref || (mode === "edit" ? "/profile" : "/"));
+    setPendingNavigationHref("");
   };
 
   const openExpirationPicker = () => {
@@ -1515,16 +1710,7 @@ export default function PostClient() {
     }
   };
 
-  const handleProductImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      handleChange("imageName", "");
-      handleChange("uploadedImageUrl", "");
-      setForm((current) => ({ ...current, imageGalleryUrls: current.optionalImageUrls }));
-      return;
-    }
-
+  const processProductImage = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       setErrors((current) => ({ ...current, imageName: "Choose an image file." }));
       return;
@@ -1536,6 +1722,9 @@ export default function PostClient() {
     }
 
     setErrors((current) => ({ ...current, imageName: undefined }));
+    setProcessingImageName(file.name);
+    setHasRetryableImage(false);
+    failedImageRef.current = null;
 
     try {
       const compressedImage = await compressImage(file);
@@ -1545,6 +1734,8 @@ export default function PostClient() {
           ...current,
           imageName: "This image is still too large after compression.",
         }));
+        failedImageRef.current = { file, kind: "product" };
+        setHasRetryableImage(true);
         return;
       }
 
@@ -1555,21 +1746,18 @@ export default function PostClient() {
         imageGalleryUrls: [compressedImage, ...current.optionalImageUrls].slice(0, maxGalleryImages),
       }));
     } catch (error) {
+      failedImageRef.current = { file, kind: "product" };
+      setHasRetryableImage(true);
       setErrors((current) => ({
         ...current,
         imageName: error instanceof Error ? error.message : "Could not preview this image.",
       }));
+    } finally {
+      setProcessingImageName("");
     }
   };
 
-  const handleOptionalImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) {
-      return;
-    }
-
+  const processOptionalImage = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       setErrors((current) => ({ ...current, imageName: "Choose an image file." }));
       return;
@@ -1589,6 +1777,9 @@ export default function PostClient() {
     }
 
     setErrors((current) => ({ ...current, imageName: undefined }));
+    setProcessingImageName(file.name);
+    setHasRetryableImage(false);
+    failedImageRef.current = null;
 
     try {
       const compressedImage = await compressImage(file);
@@ -1598,6 +1789,8 @@ export default function PostClient() {
           ...current,
           imageName: "This image is still too large after compression.",
         }));
+        failedImageRef.current = { file, kind: "optional" };
+        setHasRetryableImage(true);
         return;
       }
 
@@ -1613,11 +1806,36 @@ export default function PostClient() {
         };
       });
     } catch (error) {
+      failedImageRef.current = { file, kind: "optional" };
+      setHasRetryableImage(true);
       setErrors((current) => ({
         ...current,
         imageName: error instanceof Error ? error.message : "Could not preview this image.",
       }));
+    } finally {
+      setProcessingImageName("");
     }
+  };
+
+  const handleProductImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    void processProductImage(file);
+  };
+
+  const handleOptionalImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    void processOptionalImage(file);
+  };
+
+  const retryFailedImage = () => {
+    const failed = failedImageRef.current;
+    if (!failed || processingImageName) return;
+    if (failed.kind === "product") void processProductImage(failed.file);
+    else void processOptionalImage(failed.file);
   };
 
   const currentPrice = Number(form.price);
@@ -1628,7 +1846,9 @@ export default function PostClient() {
     originalPrice > currentPrice && discountAmount > 0 ? `${discountPercent}% off` : "";
   const hasDuplicateMatch = Boolean(duplicateCheck?.match);
   const canSubmit = !isPending && !isFetching && !hasDuplicateMatch;
-  const successOutcome = getSubmissionOutcome(actionState.message);
+  const successOutcome = mode === "edit"
+    ? { label: "Changes saved", title: "Deal updated successfully", description: actionState.message, tone: "amber" }
+    : getSubmissionOutcome(actionState.message);
   const canViewSubmittedDeal = actionState.dealStatus === "approved" && Boolean(actionState.dealId);
   const canShowDuplicateCheck = isValidUrl(form.url);
   const activeExpirationValue = showExpirationPicker ? draftExpiresAt : form.expiresAt;
@@ -1642,21 +1862,21 @@ export default function PostClient() {
   const selectedMinute = selectedExpirationDate?.getMinutes() ?? 0;
   const linkCheckingLabel =
     scrapeSummary.status === "fetching" || (currentStep === 0 && isCheckingDuplicate)
-      ? "Checking..."
+      ? "Checking…"
       : "";
 
   return (
     <main className="post-page min-h-screen px-4 py-10 sm:px-6 lg:px-8">
       <div ref={topRef} className="mx-auto max-w-5xl">
         <FormContainer
-          title="Share your next great deal"
-          description="Add the link, confirm the details, then submit for moderation."
+          title={mode === "edit" ? "Edit your deal" : "Share your next great deal"}
+          description={mode === "edit" ? "Update the details, then save the deal for moderation." : "Add the link, confirm the details, then submit for moderation."}
         >
           <div className="space-y-6">
             {actionState.ok && showSuccessPanel ? (
               <section
                 ref={messageRef}
-                className="post-success-overlay fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+                className="app-dialog-overlay post-success-overlay fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
                 aria-live="polite"
               >
                 <div
@@ -1704,7 +1924,7 @@ export default function PostClient() {
                       onClick={handlePostAnother}
                       className="post-secondary-button inline-flex h-12 w-full items-center justify-center rounded-full border px-5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
                     >
-                      Post another deal
+                      {mode === "edit" ? "Back to profile" : "Post another deal"}
                     </button>
                     <Link
                       href="/"
@@ -1730,6 +1950,10 @@ export default function PostClient() {
                 </p>
                 <p className="mt-1">{actionState.message}</p>
               </div>
+            ) : draftWasRestored ? (
+              <div className="theme-alert theme-alert-info px-5 py-3 text-sm font-semibold" role="status">
+                Your saved draft was restored from this browser.
+              </div>
             ) : null}
 
             <div className="post-stepper">
@@ -1739,7 +1963,7 @@ export default function PostClient() {
                   const isComplete = index < currentStep;
 
                   return (
-                    <li key={step}>
+                    <li key={step} className="min-w-0 w-full">
                       <div
                         className={`flex h-full w-full max-w-[11.5rem] items-center justify-center gap-3 rounded-full border px-4 py-3 transition ${
                           isCurrent
@@ -1854,16 +2078,20 @@ export default function PostClient() {
                               handleChange("imageUrl", "");
                               handleChange("uploadedImageUrl", "");
                               handleChange("imageName", "");
+                              failedImageRef.current = null;
+                              setHasRetryableImage(false);
                             }}
-                            disabled={isPending}
+                            disabled={isPending || Boolean(processingImageName)}
                             aria-label="Remove product image"
-                            className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                            className="absolute right-2 top-2 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
                           >
                             <RemoveIcon />
                           </button>
                           <UserImage
                             src={productImageUrl}
                             alt="Product photo preview"
+                            width={1200}
+                            height={900}
                             className="h-full w-full object-contain"
                             onError={form.imageUrl ? handleScrapedImageError : undefined}
                           />
@@ -1884,7 +2112,7 @@ export default function PostClient() {
                             accept="image/*"
                             className="sr-only"
                             aria-invalid={Boolean(combinedErrors.imageName)}
-                            disabled={isPending}
+                            disabled={isPending || Boolean(processingImageName)}
                             onChange={handleProductImageChange}
                           />
                         </label>
@@ -1906,16 +2134,20 @@ export default function PostClient() {
                                   imageGalleryUrls: [current.uploadedImageUrl, ...optionalImageUrls].filter(Boolean).slice(0, maxGalleryImages),
                                 };
                               });
+                              failedImageRef.current = null;
+                              setHasRetryableImage(false);
                             }}
-                            disabled={isPending}
+                            disabled={isPending || Boolean(processingImageName)}
                             aria-label={`Remove product photo ${index + 2}`}
-                            className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                            className="absolute right-2 top-2 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
                           >
                             <RemoveIcon />
                           </button>
                           <UserImage
                             src={imageUrl}
                             alt={`Product photo ${index + 2}`}
+                            width={1200}
+                            height={900}
                             className="h-full w-full object-contain"
                           />
                         </div>
@@ -1953,7 +2185,7 @@ export default function PostClient() {
                               accept="image/*"
                               className="sr-only"
                               aria-invalid={Boolean(combinedErrors.imageName)}
-                              disabled={isPending}
+                              disabled={isPending || Boolean(processingImageName)}
                               onChange={productImageUrl ? handleOptionalImageChange : handleProductImageChange}
                             />
                           </label>
@@ -1966,8 +2198,19 @@ export default function PostClient() {
                     Upload up to {maxGalleryImages} photos. The first photo is used as the thumbnail.
                   </p>
 
+                  {processingImageName ? (
+                    <p className="mt-2 text-sm font-semibold text-slate-600" role="status" aria-live="polite">
+                      Processing {processingImageName}…
+                    </p>
+                  ) : null}
+
                   {combinedErrors.imageName ? (
-                    <p className="mt-2 text-sm font-medium text-rose-700">{combinedErrors.imageName}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <p className="text-sm font-medium text-rose-700" role="alert">{combinedErrors.imageName}</p>
+                      {hasRetryableImage ? (
+                        <button type="button" onClick={retryFailedImage} disabled={Boolean(processingImageName)} className="post-secondary-button inline-flex h-10 items-center justify-center rounded-full border px-4 text-xs font-bold disabled:opacity-60">Retry image</button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
 
@@ -2359,7 +2602,7 @@ export default function PostClient() {
                             onClick={() => handleChange("imageUrl", "")}
                             disabled={isPending}
                             aria-label="Remove product image"
-                            className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+                            className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
                           >
                             <RemoveIcon />
                           </button>
@@ -2397,6 +2640,8 @@ export default function PostClient() {
                             <UserImage
                               src={activeReviewPhotoUrl}
                               alt="Product photo preview"
+                              width={1200}
+                              height={900}
                               className="max-h-52 w-full rounded-lg object-contain"
                               onError={activeReviewPhotoIndex === 0 && form.imageUrl ? handleScrapedImageError : undefined}
                             />
@@ -2415,6 +2660,8 @@ export default function PostClient() {
                                     <UserImage
                                       src={imageUrl}
                                       alt={`Review product photo ${index + 1}`}
+                                      width={160}
+                                      height={120}
                                       className="h-full w-full object-contain"
                                     />
                                   </button>
@@ -2564,6 +2811,7 @@ export default function PostClient() {
                 ) : (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <button
+                      ref={discardButtonRef}
                       type="button"
                       onClick={handleDiscard}
                       disabled={isPending}
@@ -2585,7 +2833,7 @@ export default function PostClient() {
                           Submitting deal
                         </>
                       ) : (
-                        "Submit deal"
+                        mode === "edit" ? "Save changes" : "Submit deal"
                       )}
                     </button>
                   </div>
@@ -2598,15 +2846,18 @@ export default function PostClient() {
 
       {isDiscardPromptOpen ? (
         <div
-          className="post-discard-overlay fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+          className="app-dialog-overlay post-discard-overlay fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               setIsDiscardPromptOpen(false);
+              setPendingNavigationHref("");
+              window.requestAnimationFrame(() => discardReturnFocusRef.current?.focus());
             }
           }}
         >
           <section
+            ref={discardDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="discard-deal-title"
@@ -2615,17 +2866,18 @@ export default function PostClient() {
           >
             <div>
               <h2 id="discard-deal-title" className="text-xl font-bold tracking-tight text-slate-950">
-                Discard this deal?
+                {mode === "edit" ? "Discard your changes?" : "Discard this deal?"}
               </h2>
               <p id="discard-deal-description" className="mt-2 text-sm leading-6 text-slate-600">
-                Your entered details will be removed and you will return to the homepage.
+                {mode === "edit" ? "Your unsaved changes will be removed and you will return to your profile." : "Your entered details will be removed and you will return to the homepage."}
               </p>
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <button
+                ref={discardCancelRef}
                 type="button"
-                onClick={() => setIsDiscardPromptOpen(false)}
+                onClick={() => { setIsDiscardPromptOpen(false); setPendingNavigationHref(""); window.requestAnimationFrame(() => discardReturnFocusRef.current?.focus()); }}
                 className="post-secondary-button inline-flex h-12 items-center justify-center rounded-full border px-5 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
               >
                 Keep editing

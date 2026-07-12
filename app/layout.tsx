@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fira_Code, Open_Sans, Roboto } from "next/font/google";
 import TopNav from "@/components/TopNav";
 import { getCurrentUser } from "@/lib/auth";
 import { getAbsoluteUrl, getSiteUrl, siteDescription, siteName } from "@/lib/site";
 import { getAccountSettingsThemeForUser } from "@/lib/userSettings";
 import "./globals.css";
+import OfflineStatus from "@/components/OfflineStatus";
 
 export const metadata: Metadata = {
   metadataBase: getSiteUrl(),
@@ -47,6 +48,12 @@ export const metadata: Metadata = {
     description: siteDescription,
     images: ["/deal-rakyat-og.svg"],
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 type ThemeMode = "auto" | "dark" | "light";
@@ -129,11 +136,22 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full antialiased" data-ambient="on" suppressHydrationWarning>
       <head>
+        <link rel="icon" href="/favicon.ico?v=2" sizes="32x32" type="image/x-icon" />
+        <link rel="shortcut icon" href="/favicon.ico?v=2" type="image/x-icon" />
         <script dangerouslySetInnerHTML={{ __html: createThemeScript(initialThemeMode) }} />
       </head>
       <body className={`${openSans.variable} ${roboto.variable} ${firaCode.variable} min-h-full flex flex-col`}>
+        <a
+          href="#main-content"
+          className="fixed left-4 top-4 z-[100] -translate-y-20 rounded-md bg-white px-4 py-2 font-bold text-slate-950 shadow-lg transition-transform focus:translate-y-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/25"
+        >
+          Skip to main content
+        </a>
+        <OfflineStatus />
         <TopNav initialThemeMode={initialThemeMode ?? undefined} initialUser={user} />
-        {children}
+        <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col outline-none">
+          {children}
+        </div>
       </body>
     </html>
   );

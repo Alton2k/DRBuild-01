@@ -8,23 +8,35 @@ import {
   createDefaultAccountSettings,
   defaultToggles,
   normalizeTheme,
-  profileUserNameLimit,
-  profileUserNameMinLength,
+  displayNameLimit,
+  usernameLimit,
+  usernameMinLength,
 } from "./accountSettings";
 import {
   StrapiEntity,
   StrapiListResponse,
   StrapiSingleResponse,
+  StrapiRequestError,
   getStrapiEntityFields,
   getStrapiEntityId,
   strapiRequest,
 } from "./strapi";
+import {
+  isValidUserHandle,
+  createUserHandleCandidate,
+  normalizeUserHandle,
+  stripUserHandlePrefix,
+  userHandleMaxLength,
+} from "./userHandles";
 
 type StrapiUserSetting = {
   userId: string;
-  profileAvatarUrl?: string | null;
-  profileUserName?: string | null;
-  profileBio?: string | null;
+  ownerUsername?: string | null;
+  ownerEmail?: string | null;
+  avatarUrl?: string | null;
+  displayName?: string | null;
+  username?: string | null;
+  bio?: string | null;
   theme?: string | null;
   notificationSettings?: Partial<Record<ToggleKey, boolean>> | null;
   privacySettings?: Partial<Record<ToggleKey, boolean>> | null;
@@ -38,6 +50,11 @@ export type AccountSettingsPatch = {
   profile?: Partial<StoredProfileSettings>;
   theme?: unknown;
   toggles?: Partial<Record<ToggleKey, unknown>>;
+};
+
+type UserSettingOwner = {
+  ownerUsername?: string;
+  email?: string;
 };
 
 function normalizeToggleGroup(value: StrapiUserSetting["notificationSettings"]) {
@@ -78,13 +95,22 @@ function splitToggles(toggles: Record<ToggleKey, boolean>) {
 }
 
 function normalizeSettings(fields: Partial<StrapiUserSetting>, displayName = ""): AccountSettings {
-  const fallback = createDefaultAccountSettings(displayName);
+  const fallback = createDefaultAccountSettings(displayName, createUserHandleCandidate(displayName));
+  const storedUserName =
+    typeof fields.username === "string" && fields.username
+      ? fields.username
+      : fallback.profile.userName;
+  const storedDisplayName =
+    typeof fields.displayName === "string" && fields.displayName
+      ? fields.displayName
+      : displayName || storedUserName;
 
   return {
     profile: {
-      avatarUrl: typeof fields.profileAvatarUrl === "string" ? fields.profileAvatarUrl : fallback.profile.avatarUrl,
-      userName: typeof fields.profileUserName === "string" && fields.profileUserName ? fields.profileUserName : fallback.profile.userName,
-      bio: typeof fields.profileBio === "string" ? fields.profileBio : fallback.profile.bio,
+      avatarUrl: typeof fields.avatarUrl === "string" ? fields.avatarUrl : fallback.profile.avatarUrl,
+      displayName: storedDisplayName,
+      userName: storedUserName,
+      bio: typeof fields.bio === "string" ? fields.bio : fallback.profile.bio,
     },
     theme: normalizeTheme(fields.theme),
     toggles: {
@@ -95,25 +121,38 @@ function normalizeSettings(fields: Partial<StrapiUserSetting>, displayName = "")
   };
 }
 
-function serializeSettingsPatch(userId: string, settings: AccountSettings, patch: AccountSettingsPatch): StrapiUserSetting {
+function serializeSettingsPatch(
+  userId: string,
+  settings: AccountSettings,
+  patch: AccountSettingsPatch,
+  options: { includeUserName?: boolean } = {},
+): StrapiUserSetting {
   const data: StrapiUserSetting = { userId };
 
   if (patch.profile) {
     if (typeof patch.profile.avatarUrl === "string") {
-      data.profileAvatarUrl = settings.profile.avatarUrl;
+      data.avatarUrl = settings.profile.avatarUrl;
+    }
+
+    if (typeof patch.profile.displayName === "string") {
+      data.displayName = settings.profile.displayName;
     }
 
     if (typeof patch.profile.userName === "string") {
-      data.profileUserName = settings.profile.userName;
+      data.username = settings.profile.userName;
     }
 
     if (typeof patch.profile.bio === "string") {
-      data.profileBio = settings.profile.bio;
+      data.bio = settings.profile.bio;
     }
   }
 
   if (patch.theme !== undefined) {
     data.theme = settings.theme;
+  }
+
+  if (options.includeUserName && settings.profile.userName) {
+    data.username = settings.profile.userName;
   }
 
   if (patch.toggles) {
@@ -139,8 +178,18 @@ function mergeSettings(settings: AccountSettings, patch: AccountSettingsPatch): 
       nextSettings.profile.avatarUrl = patch.profile.avatarUrl;
     }
 
+    if (typeof patch.profile.displayName === "string") {
+      const displayName = patch.profile.displayName.trim();
+
+      if (displayName.length > displayNameLimit) {
+        throw new UserSettingsValidationError(`Display name must be ${displayNameLimit} characters or fewer.`);
+      }
+
+      nextSettings.profile.displayName = displayName;
+    }
+
     if (typeof patch.profile.userName === "string") {
-      nextSettings.profile.userName = patch.profile.userName.trim();
+      nextSettings.profile.userName = normalizeUserHandle(patch.profile.userName);
     }
 
     if (typeof patch.profile.bio === "string") {
@@ -176,19 +225,31 @@ async function findUserSetting(userId: string) {
   return response.data[0] ?? null;
 }
 
-async function assertProfileUserNameAvailable(userId: string, profileUserName: string) {
-  const normalizedProfileUserName = profileUserName.trim();
+function isUniqueConstraintError(error: unknown) {
+  return (
+    error instanceof StrapiRequestError &&
+    (error.status === 400 || error.status === 409) &&
+    /unique|duplicate/i.test(error.message)
+  );
+}
 
-  if (normalizedProfileUserName.length < profileUserNameMinLength) {
-    throw new UserSettingsValidationError(`Username must be at least ${profileUserNameMinLength} characters long.`);
+async function assertProfileUserNameAvailable(userId: string, username: string) {
+  const normalizedProfileUserName = normalizeUserHandle(username);
+
+  if (normalizedProfileUserName.length < usernameMinLength) {
+    throw new UserSettingsValidationError(`Handle must be at least ${usernameMinLength} characters long.`);
   }
 
-  if (normalizedProfileUserName.length > profileUserNameLimit) {
-    throw new UserSettingsValidationError(`Username must be ${profileUserNameLimit} characters or fewer.`);
+  if (normalizedProfileUserName.length > usernameLimit) {
+    throw new UserSettingsValidationError(`Handle must be ${usernameLimit} characters or fewer.`);
+  }
+
+  if (!isValidUserHandle(normalizedProfileUserName)) {
+    throw new UserSettingsValidationError("Handle can use letters, numbers, dots, and underscores only.");
   }
 
   const query = new URLSearchParams();
-  query.set("filters[profileUserName][$eqi]", normalizedProfileUserName);
+  query.set("filters[username][$eqi]", normalizedProfileUserName);
   query.set("pagination[pageSize]", "10");
 
   const response = await strapiRequest<StrapiListResponse<StrapiUserSetting>>("/api/user-settings", {
@@ -202,24 +263,142 @@ async function assertProfileUserNameAvailable(userId: string, profileUserName: s
 
     return (
       fields.userId !== userId &&
-      typeof fields.profileUserName === "string" &&
-      fields.profileUserName.trim().toLocaleLowerCase() === normalizedComparableName
+      typeof fields.username === "string" &&
+      fields.username.trim().toLocaleLowerCase() === normalizedComparableName
     );
   });
 
   if (matchingOtherUser) {
-    throw new UserSettingsValidationError("Username is already taken.");
+    throw new UserSettingsValidationError("Handle is already taken.");
   }
 }
+
+async function getProfileUserNameOwner(username: string) {
+  const query = new URLSearchParams();
+  query.set("filters[username][$eqi]", normalizeUserHandle(username));
+  query.set("pagination[pageSize]", "1");
+
+  const response = await strapiRequest<StrapiListResponse<StrapiUserSetting>>("/api/user-settings", {
+    query,
+    requireToken: true,
+  });
+  const setting = response.data[0];
+
+  return setting ? getStrapiEntityFields(setting).userId : "";
+}
+
+async function createUniqueProfileUserName(userId: string, preferredUserName: string) {
+  const base = createUserHandleCandidate(preferredUserName);
+  const owner = await getProfileUserNameOwner(base);
+
+  if (!owner || owner === userId) {
+    return base;
+  }
+
+  const suffix = `_${userId}`;
+  const candidate = createUserHandleCandidate(`${base.slice(0, userHandleMaxLength - suffix.length)}${suffix}`);
+  const candidateOwner = await getProfileUserNameOwner(candidate);
+
+  return !candidateOwner || candidateOwner === userId
+    ? candidate
+    : createUserHandleCandidate(`${base.slice(0, Math.max(0, userHandleMaxLength - suffix.length - 2))}_${Date.now().toString(36).slice(-1)}${suffix}`);
+}
+
+export type PublicProfileSearchResult = {
+  userId: string;
+  userName: string;
+  displayName: string;
+  avatarUrl: string;
+  bio: string;
+};
 
 export async function getAccountSettingsForUser(userId: string, displayName = "") {
   const setting = await findUserSetting(userId);
 
   if (!setting) {
-    return createDefaultAccountSettings(displayName);
+    return createDefaultAccountSettings(displayName, createUserHandleCandidate(displayName));
   }
 
   return normalizeSettings(getStrapiEntityFields(setting), displayName);
+}
+
+export async function ensureAccountSettingsForUser(
+  userId: string,
+  displayName = "",
+  preferredUserName = displayName,
+  owner: UserSettingOwner = {},
+) {
+  const existing = await findUserSetting(userId);
+  const ownerUsername = owner.ownerUsername?.trim() ?? "";
+  const ownerEmail = owner.email?.trim() ?? "";
+
+  if (existing) {
+    const fields = getStrapiEntityFields(existing);
+    const needsOwnerUpdate =
+      (ownerUsername && fields.ownerUsername !== ownerUsername) ||
+      (ownerEmail && fields.ownerEmail !== ownerEmail);
+
+    if (fields.username && fields.displayName && !needsOwnerUpdate) {
+      return normalizeSettings(fields, displayName);
+    }
+
+    const settings = normalizeSettings(fields, displayName);
+    const data: StrapiUserSetting = {
+      userId,
+      ...(fields.username ? {} : { username: await createUniqueProfileUserName(userId, preferredUserName) }),
+      ...(fields.displayName ? {} : { displayName: displayName || settings.profile.displayName }),
+      ...(ownerUsername && fields.ownerUsername !== ownerUsername ? { ownerUsername } : {}),
+      ...(ownerEmail && fields.ownerEmail !== ownerEmail ? { ownerEmail } : {}),
+    };
+
+    const response = await strapiRequest<StrapiSingleResponse<StrapiUserSetting>>(
+      `/api/user-settings/${getStrapiEntityId(existing as StrapiEntity<StrapiUserSetting>)}`,
+      {
+        method: "PUT",
+        body: { data },
+        requireToken: true,
+      },
+    );
+
+    return normalizeSettings(response.data ? getStrapiEntityFields(response.data) : { ...fields, ...data }, displayName);
+  }
+
+  const username = await createUniqueProfileUserName(userId, preferredUserName);
+  const profileDisplayName = displayName || preferredUserName || username;
+  let response: StrapiSingleResponse<StrapiUserSetting>;
+
+  try {
+    response = await strapiRequest<StrapiSingleResponse<StrapiUserSetting>>("/api/user-settings", {
+      method: "POST",
+      body: {
+        data: {
+          userId,
+          ...(ownerUsername ? { ownerUsername } : {}),
+          ...(ownerEmail ? { ownerEmail } : {}),
+          username,
+          displayName: profileDisplayName,
+        },
+      },
+      requireToken: true,
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+
+    const setting = await findUserSetting(userId);
+
+    if (!setting) {
+      throw error;
+    }
+
+    return normalizeSettings(getStrapiEntityFields(setting), profileDisplayName);
+  }
+
+  return normalizeSettings(
+    response.data ? getStrapiEntityFields(response.data) : { userId, username, displayName: profileDisplayName },
+    profileDisplayName,
+  );
 }
 
 export async function getAccountSettingsThemeForUser(userId: string): Promise<SettingsTheme | null> {
@@ -272,9 +451,10 @@ export async function getAccountSettingsByUserIds(userIds: string[]) {
   return settingsByUserId;
 }
 
-export async function getAccountSettingsByProfileUserName(profileUserName: string) {
+export async function getAccountSettingsByProfileUserName(username: string) {
+  const normalizedProfileUserName = normalizeUserHandle(username);
   const query = new URLSearchParams();
-  query.set("filters[profileUserName][$eqi]", profileUserName);
+  query.set("filters[username][$eqi]", normalizedProfileUserName || stripUserHandlePrefix(username));
   query.set("pagination[pageSize]", "1");
 
   const response = await strapiRequest<StrapiListResponse<StrapiUserSetting>>("/api/user-settings", {
@@ -295,22 +475,71 @@ export async function getAccountSettingsByProfileUserName(profileUserName: strin
 
   return {
     userId: fields.userId,
-    settings: normalizeSettings(fields, profileUserName),
+    settings: normalizeSettings(fields, normalizedProfileUserName || username),
   };
+}
+
+export async function searchPublicProfiles(searchTerm: string, limit = 6): Promise<PublicProfileSearchResult[]> {
+  const rawQuery = stripUserHandlePrefix(searchTerm);
+  const normalizedQuery = normalizeUserHandle(searchTerm);
+  const queryValue = normalizedQuery || rawQuery;
+
+  if (queryValue.length < 2) {
+    return [];
+  }
+
+  const query = new URLSearchParams();
+  query.set("filters[$or][0][username][$containsi]", queryValue);
+  query.set("filters[$or][1][displayName][$containsi]", rawQuery || queryValue);
+  query.set("sort", "username:asc");
+  query.set("pagination[pageSize]", String(Math.max(limit * 3, limit)));
+
+  const response = await strapiRequest<StrapiListResponse<StrapiUserSetting>>("/api/user-settings", {
+    query,
+    requireToken: true,
+  });
+
+  return response.data
+    .map((setting) => getStrapiEntityFields(setting))
+    .filter((fields) => {
+      const settings = normalizeSettings(fields);
+
+      return Boolean(
+        fields.userId &&
+        settings.toggles.publicProfile &&
+        fields.username &&
+        isValidUserHandle(fields.username),
+      );
+    })
+    .slice(0, limit)
+    .map((fields) => {
+      const settings = normalizeSettings(fields);
+
+      return {
+        userId: fields.userId,
+        userName: normalizeUserHandle(settings.profile.userName),
+        displayName: settings.profile.displayName,
+        avatarUrl: settings.profile.avatarUrl,
+        bio: settings.profile.bio,
+      };
+    });
 }
 
 export async function saveAccountSettingsForUser(userId: string, patch: AccountSettingsPatch, displayName = "") {
   const existing = await findUserSetting(userId);
+  const existingFields = existing ? getStrapiEntityFields(existing) : null;
   const currentSettings = existing
-    ? normalizeSettings(getStrapiEntityFields(existing), displayName)
-    : createDefaultAccountSettings(displayName);
+    ? normalizeSettings(existingFields ?? {}, displayName)
+    : createDefaultAccountSettings(displayName, createUserHandleCandidate(displayName));
   const nextSettings = mergeSettings(currentSettings, patch);
 
   if (patch.profile && typeof patch.profile.userName === "string") {
     await assertProfileUserNameAvailable(userId, nextSettings.profile.userName);
   }
 
-  const data = serializeSettingsPatch(userId, nextSettings, patch);
+  const data = serializeSettingsPatch(userId, nextSettings, patch, {
+    includeUserName: !existing || !existingFields?.username,
+  });
 
   if (existing) {
     const response = await strapiRequest<StrapiSingleResponse<StrapiUserSetting>>(

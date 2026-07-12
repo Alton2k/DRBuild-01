@@ -11,14 +11,24 @@ import {
   useSyncExternalStore,
   type CSSProperties,
   type FormEvent,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
 import { signOutAction } from "@/app/auth/actions";
 import { saveAccountSettingsAction } from "@/app/settings/actions";
 import type { DealCategory } from "@/lib/categories";
+import { formatUserHandle, getUserProfilePath } from "@/lib/userHandles";
 
 type ThemeMode = "auto" | "dark" | "light";
+
+type MemberSearchResult = {
+  userId: string;
+  userName: string;
+  displayName: string;
+  avatarUrl: string;
+  bio: string;
+};
 
 const themeStorageKey = "dealmy_theme";
 const themeModeChangedEventName = "dealmy:theme-mode-changed";
@@ -49,6 +59,7 @@ const secondaryCategoryNames = [
 ];
 const browseParamNames = ["q", "category", "subCategory", "feed", "period", "page"];
 const mobileMenuId = "mobile-site-menu";
+const memberSearchListboxId = "top-search-member-results";
 const focusableSelector = [
   "a[href]",
   "button:not([disabled])",
@@ -148,6 +159,13 @@ export default function TopNavClient({
     sourceQuery: activeSearchQuery,
     value: activeSearchQuery,
   });
+  const [memberSearch, setMemberSearch] = useState<{
+    query: string;
+    results: MemberSearchResult[];
+    status: "idle" | "loading" | "success" | "error";
+  }>({ query: "", results: [], status: "idle" });
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [activeMemberIndex, setActiveMemberIndex] = useState(-1);
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
   const menuOpenButtonRef = useRef<HTMLButtonElement>(null);
   const categoryMegaMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -162,6 +180,70 @@ export default function TopNavClient({
     getStoredThemeMode,
     () => initialThemeMode,
   );
+  const memberResultsAreVisible =
+    isSearchFocused &&
+    memberSearch.query === searchValue.trim() &&
+    memberSearch.results.length > 0;
+  const memberPanelIsVisible =
+    isSearchFocused &&
+    searchValue.trim().length >= 2 &&
+    memberSearch.query === searchValue.trim() &&
+    memberSearch.status !== "idle";
+  const memberSearchAnnouncement = memberSearch.status === "loading"
+    ? "Searching members."
+    : memberSearch.status === "error"
+      ? "Member search is temporarily unavailable. Deal search is still available."
+      : memberSearch.status === "success" && memberSearch.results.length === 0
+        ? "No matching members found."
+        : memberSearch.status === "success"
+          ? `${memberSearch.results.length} matching ${memberSearch.results.length === 1 ? "member" : "members"} found.`
+          : "";
+  const currentMemberSearchAnnouncement = searchValue.trim().length >= 2 && memberSearch.query === searchValue.trim()
+    ? memberSearchAnnouncement
+    : "";
+  const activeMember = memberSearch.results[activeMemberIndex];
+
+  useEffect(() => {
+    const query = searchValue.trim();
+
+    if (query.length < 2) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setMemberSearch({ query, results: [], status: "loading" });
+
+      try {
+        const response = await fetch(`/api/member-search?q=${encodeURIComponent(query)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          setMemberSearch({ query, results: [], status: "error" });
+          return;
+        }
+
+        const payload = await response.json() as { members?: MemberSearchResult[] };
+        setMemberSearch({
+          query,
+          results: Array.isArray(payload.members) ? payload.members : [],
+          status: "success",
+        });
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setMemberSearch({ query, results: [], status: "error" });
+        }
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [searchValue]);
+
   const closeMenu = useCallback(() => {
     setIsMenuOpen(false);
     setIsCategoryMenuOpen(false);
@@ -493,6 +575,7 @@ export default function TopNavClient({
     }
 
     router.push(createBrowseHref(params));
+    setIsSearchFocused(false);
   };
 
   const handleClearSearch = () => {
@@ -500,7 +583,56 @@ export default function TopNavClient({
 
     params.delete("q");
     setSearchDraft({ sourceQuery: "", value: "" });
+    setMemberSearch({ query: "", results: [], status: "idle" });
+    setActiveMemberIndex(-1);
     router.push(createBrowseHref(params));
+  };
+
+  const handleSearchBlur = (event: ReactFocusEvent<HTMLFormElement>) => {
+    const nextFocusedElement = event.relatedTarget;
+
+    if (nextFocusedElement instanceof Node && event.currentTarget.contains(nextFocusedElement)) {
+      return;
+    }
+
+    setIsSearchFocused(false);
+    setActiveMemberIndex(-1);
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setIsSearchFocused(false);
+      setActiveMemberIndex(-1);
+      return;
+    }
+
+    if (!memberResultsAreVisible) {
+      return;
+    }
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      setActiveMemberIndex((current) => {
+        if (current < 0) {
+          return direction === 1 ? 0 : memberSearch.results.length - 1;
+        }
+
+        return (current + direction + memberSearch.results.length) % memberSearch.results.length;
+      });
+      return;
+    }
+
+    if (event.key === "Enter" && activeMemberIndex >= 0) {
+      const member = memberSearch.results[activeMemberIndex];
+
+      if (member) {
+        event.preventDefault();
+        router.push(getUserProfilePath(member.userId, member.userName));
+        setIsSearchFocused(false);
+        setActiveMemberIndex(-1);
+      }
+    }
   };
 
   return (
@@ -522,7 +654,7 @@ export default function TopNavClient({
               setIsHeaderHidden(false);
               setIsMenuOpen(true);
             }}
-            className="topbar-menu-trigger inline-flex h-9 w-9 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/20"
+            className="topbar-menu-trigger inline-flex h-10 w-10 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/20"
           >
             <svg
               aria-hidden="true"
@@ -543,7 +675,7 @@ export default function TopNavClient({
             href="/"
             onClick={handleLogoClick}
             aria-label="Deal Rakyat home"
-            className="inline-flex h-11 w-28 shrink-0 items-center justify-center overflow-hidden bg-transparent px-2 py-1 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 sm:h-12 sm:w-32"
+            className="inline-flex h-11 w-28 shrink-0 cursor-pointer items-center justify-center overflow-hidden bg-transparent px-2 py-1 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 sm:h-12 sm:w-32"
           >
             <Image
               src="/deal-rakyat-logo.svg"
@@ -552,18 +684,20 @@ export default function TopNavClient({
               height={100}
               priority
               unoptimized
-              className="h-full w-full scale-[1.2] object-contain"
+              className="pointer-events-none h-full w-full select-none scale-[1.2] object-contain"
             />
           </Link>
         </div>
 
         <form
           onSubmit={handleSearchSubmit}
+          onFocusCapture={() => setIsSearchFocused(true)}
+          onBlurCapture={handleSearchBlur}
           role="search"
-          className="mx-auto flex w-full max-w-md min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white/90 px-3 py-1.5 shadow-sm transition focus-within:border-[#dc115e]/45 focus-within:bg-white focus-within:ring-4 focus-within:ring-[#dc115e]/15"
+          className="topbar-search-form relative mx-auto flex w-full max-w-md min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white/90 px-3 py-1.5 shadow-sm transition focus-within:border-[#dc115e]/45 focus-within:bg-white focus-within:ring-4 focus-within:ring-[#dc115e]/15"
         >
           <label className="sr-only" htmlFor="top-search-deals">
-            Search deals
+            Search deals and members
           </label>
           <svg
             aria-hidden="true"
@@ -581,22 +715,35 @@ export default function TopNavClient({
           <input
             id="top-search-deals"
             name="q"
-            type="search"
-            placeholder="Search deals"
+            type="text"
+            inputMode="search"
+            enterKeyHint="search"
             value={searchValue}
-            onChange={(event) =>
+            onChange={(event) => {
+              setActiveMemberIndex(-1);
               setSearchDraft({
                 sourceQuery: activeSearchQuery,
                 value: event.target.value,
-              })
+              });
+            }}
+            onKeyDown={handleSearchKeyDown}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={memberPanelIsVisible}
+            aria-controls={memberPanelIsVisible ? memberSearchListboxId : undefined}
+            aria-activedescendant={
+              memberResultsAreVisible && activeMember
+                ? `top-search-member-${activeMember.userId}`
+                : undefined
             }
-            className="min-w-0 flex-1 bg-transparent text-sm text-slate-950 outline-none placeholder:text-slate-400"
+            className="topbar-search-input min-w-0 flex-1 bg-transparent text-sm text-slate-950 outline-none placeholder:text-slate-400"
           />
-          {activeSearchQuery ? (
+          <span className="sr-only" aria-live="polite" aria-atomic="true">{currentMemberSearchAnnouncement}</span>
+          {searchValue ? (
             <button
               type="button"
               onClick={handleClearSearch}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+              className="topbar-search-clear inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
               aria-label="Clear search"
               title="Clear search"
             >
@@ -617,13 +764,65 @@ export default function TopNavClient({
           ) : null}
           <button
             type="submit"
-            className="topbar-account-action inline-flex h-8 shrink-0 items-center justify-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:opacity-60"
+            className="topbar-account-action inline-flex h-10 shrink-0 items-center justify-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:opacity-60"
           >
             Search
           </button>
+
+          {memberPanelIsVisible ? (
+            <div
+              id={memberSearchListboxId}
+              className="topbar-member-results absolute left-0 right-0 overflow-hidden rounded-lg border shadow-xl"
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              {memberSearch.status === "loading" ? (
+                <p className="px-4 py-3 text-sm font-semibold text-slate-600" role="status">Searching members…</p>
+              ) : memberSearch.status === "error" ? (
+                <p className="px-4 py-3 text-sm font-semibold text-rose-700" role="status">Member search is unavailable. Press Enter to search deals.</p>
+              ) : memberSearch.results.length === 0 ? (
+                <p className="px-4 py-3 text-sm font-semibold text-slate-600" role="status">No matching members. Press Enter to search deals.</p>
+              ) : (
+              <div className="grid" role="listbox" aria-label="Matching members">
+                {memberSearch.results.map((member, index) => (
+                    <Link
+                      key={member.userId}
+                      id={`top-search-member-${member.userId}`}
+                      role="option"
+                      aria-selected={index === activeMemberIndex}
+                      href={getUserProfilePath(member.userId, member.userName)}
+                      onMouseEnter={() => setActiveMemberIndex(index)}
+                      onClick={() => {
+                        setIsSearchFocused(false);
+                        setActiveMemberIndex(-1);
+                      }}
+                      className={`topbar-member-result grid grid-cols-[40px_minmax(0,1fr)] items-center gap-3 px-3 py-2.5 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-[#dc115e]/20 ${
+                        index === activeMemberIndex ? "topbar-member-result-active" : ""
+                      }`}
+                    >
+                      <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#dc115e] text-xs font-black uppercase text-white">
+                        {member.avatarUrl ? (
+                          <Image src={member.avatarUrl} alt="" width={40} height={40} unoptimized className="h-full w-full object-cover" />
+                        ) : (
+                          member.userName.slice(0, 2)
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="topbar-member-result-name block truncate text-sm font-black">
+                          {member.displayName || formatUserHandle(member.userName)}
+                        </span>
+                        <span className="topbar-member-result-handle mt-0.5 block truncate text-xs font-semibold">
+                          {formatUserHandle(member.userName)} · Member
+                        </span>
+                      </span>
+                    </Link>
+                ))}
+              </div>
+              )}
+            </div>
+          ) : null}
         </form>
 
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+        <div className="hidden flex-wrap items-center gap-2 sm:flex lg:justify-end">
           <Link
             href="/post"
             aria-current={postIsActive ? "page" : undefined}
@@ -653,7 +852,7 @@ export default function TopNavClient({
               <Link
                 href="/profile"
                 aria-current={profileIsActive ? "page" : undefined}
-                className={`topbar-account-action inline-flex h-9 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
+                className={`topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
                   profileIsActive
                     ? "is-active"
                     : ""
@@ -665,7 +864,7 @@ export default function TopNavClient({
                 <button
                   type="submit"
                   title={userEmail}
-                  className="topbar-account-action inline-flex h-9 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition"
+                  className="topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition"
                 >
                   Log out
                 </button>
@@ -674,7 +873,7 @@ export default function TopNavClient({
           ) : (
             <Link
               href={authHref}
-              className="topbar-account-action inline-flex h-9 items-center justify-center rounded-full border px-4 text-sm font-semibold transition"
+              className="topbar-account-action inline-flex h-10 items-center justify-center rounded-full border px-4 text-sm font-semibold transition"
             >
               Log in / Register
             </Link>
@@ -896,6 +1095,20 @@ export default function TopNavClient({
                 <path d="M9 20v-6h6v6" />
               </svg>
               <span>Home</span>
+            </Link>
+            <Link
+              href="/post"
+              onClick={closeMenu}
+              aria-current={postIsActive ? "page" : undefined}
+              className={`sidebar-menu-action inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                postIsActive ? "sidebar-menu-action-active" : ""
+              }`}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+              <span>Post Deal</span>
             </Link>
             <button
               type="button"

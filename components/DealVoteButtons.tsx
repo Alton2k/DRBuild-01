@@ -12,6 +12,8 @@ interface DealVoteButtonsProps {
   scoreClassName?: string;
   buttonClassName?: string;
   containerClassName?: string;
+  wrapperClassName?: string;
+  flat?: boolean;
   voteStorageScope?: string;
   disabled?: boolean;
 }
@@ -51,6 +53,15 @@ function getVoteStorageKey(dealId: string, voteStorageScope: string) {
   return `deal-rakyat:deal-vote:${voteStorageScope}:${dealId}`;
 }
 
+function persistVoteSelection(key: string, vote: VoteDirection | null) {
+  try {
+    if (vote) window.localStorage.setItem(key, vote);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // Voting remains functional when browser storage is restricted.
+  }
+}
+
 export default function DealVoteButtons({
   dealId,
   initialScore,
@@ -59,6 +70,8 @@ export default function DealVoteButtons({
   scoreClassName = defaultScoreClassName,
   buttonClassName = defaultButtonClassName,
   containerClassName = defaultContainerClassName,
+  wrapperClassName = "flex flex-col gap-2",
+  flat = false,
   voteStorageScope = "anonymous",
   disabled = false,
 }: DealVoteButtonsProps) {
@@ -82,11 +95,8 @@ export default function DealVoteButtons({
     setScore((current) => current + scoreDelta);
     setSelectedVote(nextVote);
 
-    if (nextVote) {
-      window.localStorage.setItem(getVoteStorageKey(dealId, voteStorageScope), nextVote);
-    } else {
-      window.localStorage.removeItem(getVoteStorageKey(dealId, voteStorageScope));
-    }
+    const storageKey = getVoteStorageKey(dealId, voteStorageScope);
+    persistVoteSelection(storageKey, nextVote);
 
     startTransition(async () => {
       const result = await voteDealAction(dealId, direction);
@@ -96,11 +106,7 @@ export default function DealVoteButtons({
         setSelectedVote(previousVote);
         setErrorMessage(result.message ?? "Could not save your vote right now. Please try again.");
 
-        if (previousVote) {
-          window.localStorage.setItem(getVoteStorageKey(dealId, voteStorageScope), previousVote);
-        } else {
-          window.localStorage.removeItem(getVoteStorageKey(dealId, voteStorageScope));
-        }
+        persistVoteSelection(storageKey, previousVote);
 
         return;
       }
@@ -108,64 +114,72 @@ export default function DealVoteButtons({
       setScore(result.score);
       setSelectedVote(result.viewerVote);
 
-      if (result.viewerVote) {
-        window.localStorage.setItem(getVoteStorageKey(dealId, voteStorageScope), result.viewerVote);
-      } else {
-        window.localStorage.removeItem(getVoteStorageKey(dealId, voteStorageScope));
-      }
+      persistVoteSelection(storageKey, result.viewerVote);
     });
   };
 
+  const voteControls = (
+    <>
+      <button
+        type="button"
+        aria-label={selectedVote === "up" ? "Remove upvote" : "Upvote deal"}
+        onClick={() => vote("up")}
+        disabled={isPending || disabled}
+        aria-pressed={selectedVote === "up"}
+        className={`deal-vote-button ${buttonClassName} ${
+          selectedVote === "up" ? selectedButtonClassNames.up : neutralButtonClassName
+        }`}
+      >
+        <VoteChevronIcon direction="up" />
+      </button>
+      {showScore ? (
+        <span
+          className={`deal-vote-score ${scoreClassName} ${
+            selectedVote ? selectedScoreClassNames[selectedVote] : neutralScoreClassName
+          }`}
+        >
+          {score}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        aria-label={selectedVote === "down" ? "Remove downvote" : "Downvote deal"}
+        onClick={() => vote("down")}
+        disabled={isPending || disabled}
+        aria-pressed={selectedVote === "down"}
+        className={`deal-vote-button ${buttonClassName} ${
+          selectedVote === "down" ? selectedButtonClassNames.down : neutralButtonClassName
+        }`}
+      >
+        <VoteChevronIcon direction="down" />
+      </button>
+    </>
+  );
+
+  const error = errorMessage ? (
+        <p className={`theme-alert theme-alert-warning max-w-64 px-3 py-2 text-xs font-semibold leading-5 ${flat ? "mobile-safe-toast fixed bottom-4 left-1/2 z-[80] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 text-center" : ""}`} aria-live="polite">
+          <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
+            {"\u26A0"}
+          </span>
+          {errorMessage}
+        </p>
+  ) : null;
+
+  if (flat) {
+    return <>{voteControls}{error}</>;
+  }
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className={wrapperClassName}>
       <div
         className={`deal-vote-control ${containerClassName} ${
           selectedVote ? selectedContainerClassNames[selectedVote] : neutralContainerClassName
         }`}
         aria-label="Deal voting"
       >
-        <button
-          type="button"
-          aria-label={selectedVote === "up" ? "Remove upvote" : "Upvote deal"}
-          onClick={() => vote("up")}
-          disabled={isPending || disabled}
-          aria-pressed={selectedVote === "up"}
-          className={`deal-vote-button ${buttonClassName} ${
-            selectedVote === "up" ? selectedButtonClassNames.up : neutralButtonClassName
-          }`}
-        >
-          <VoteChevronIcon direction="up" />
-        </button>
-        {showScore ? (
-          <span
-            className={`deal-vote-score ${scoreClassName} ${
-              selectedVote ? selectedScoreClassNames[selectedVote] : neutralScoreClassName
-            }`}
-          >
-            {score}
-          </span>
-        ) : null}
-        <button
-          type="button"
-          aria-label={selectedVote === "down" ? "Remove downvote" : "Downvote deal"}
-          onClick={() => vote("down")}
-          disabled={isPending || disabled}
-          aria-pressed={selectedVote === "down"}
-          className={`deal-vote-button ${buttonClassName} ${
-            selectedVote === "down" ? selectedButtonClassNames.down : neutralButtonClassName
-          }`}
-        >
-          <VoteChevronIcon direction="down" />
-        </button>
+        {voteControls}
       </div>
-      {errorMessage ? (
-        <p className="theme-alert theme-alert-warning max-w-64 px-3 py-2 text-xs font-semibold leading-5" aria-live="polite">
-          <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
-            {"\u26A0"}
-          </span>
-          {errorMessage}
-        </p>
-      ) : null}
+      {error}
     </div>
   );
 }

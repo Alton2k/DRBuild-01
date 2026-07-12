@@ -30,14 +30,14 @@ export default function AboutPage() {
         {
           title: "Commercial transparency",
           body: [
-            "Some outbound links may be affiliate links. If a user clicks one of those links and buys something, Deal Rakyat may earn a commission at no extra cost to the user.",
-            "Affiliate revenue should not decide whether a deal is allowed. Posts still need to be useful, accurate enough for the community, and open to discussion and reporting.",
+            "Deal Rakyat does not currently add affiliate tracking or earn purchase commissions. The Affiliate Disclosure must be updated before any affiliate programme is enabled.",
+            "Commercial relationships and self-promotion must be disclosed. Posts still need to be useful, accurate enough for the community, and open to discussion and reporting.",
           ],
         },
         {
-          title: "Contact placeholders",
+          title: "Support channels",
           body: [
-            "Before launch, replace contact placeholders across the site with working channels such as hello@dealrakyat.example for general questions, privacy@dealrakyat.example for privacy requests, and abuse@dealrakyat.example for takedown or safety reports.",
+            "Deal and comment reports are available in the product. General support and privacy requests use support@dealrakyat.my, while formal takedown and legal notices use legal@dealrakyat.my. The Contact page explains what to include and the current response expectations.",
           ],
         },
       ]}

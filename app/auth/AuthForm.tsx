@@ -81,6 +81,10 @@ export default function AuthForm({
     password.length >= 6 && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
   const showPasswordRequirement = isSignup && password.length > 0 && !passwordMeetsSignupRequirements;
   const submitDisabled = isPending || showPasswordRequirement;
+  const emailError = !state.ok && state.field === "email" ? state.message : "";
+  const passwordError = !state.ok && state.field === "password" ? state.message : "";
+  const formError = !state.ok && state.field === "form" ? state.message : "";
+  const showPasswordRecoveryStatus = !isSignup && state.message === "Invalid email or password.";
 
   return (
     <section className="mx-auto w-full max-w-md">
@@ -131,28 +135,6 @@ export default function AuthForm({
             </div>
           ) : null}
 
-          {state.message ? (
-            <div
-              className={`theme-alert px-4 py-3 text-sm leading-6 ${
-                state.ok
-                  ? "theme-alert-success"
-                  : "theme-alert-error"
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              <p className="font-semibold">
-                {!state.ok ? (
-                  <span className="theme-alert-symbol mr-1.5" aria-hidden="true">
-                    {"\u26A0"}
-                  </span>
-                ) : null}
-                {state.ok ? "Done" : "Could not continue"}
-              </p>
-              <p className="mt-0.5">{state.message}</p>
-            </div>
-          ) : null}
-
           <form action={formAction} className="space-y-5">
             <input type="hidden" name="next" value={next} />
             <fieldset disabled={isPending} className="space-y-5">
@@ -163,9 +145,16 @@ export default function AuthForm({
                   type="email"
                   required
                   autoComplete="email"
+                  aria-invalid={Boolean(emailError)}
+                  aria-describedby={emailError ? "auth-email-error" : undefined}
                   className="auth-input h-12 w-full rounded-2xl border px-4 text-sm shadow-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-80"
                   placeholder="you@example.com"
                 />
+                {emailError ? (
+                  <span id="auth-email-error" className="auth-inline-error block text-sm font-semibold leading-5" role="alert">
+                    {emailError}
+                  </span>
+                ) : null}
               </label>
 
               <label className="block space-y-2">
@@ -177,6 +166,8 @@ export default function AuthForm({
                     required
                     minLength={6}
                     autoComplete={isSignup ? "new-password" : "current-password"}
+                    aria-invalid={Boolean(passwordError)}
+                    aria-describedby={passwordError ? "auth-password-error" : undefined}
                     className="auth-input h-12 w-full rounded-2xl border px-4 pr-12 text-sm shadow-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-80"
                     placeholder={isSignup ? "At least 6 characters" : "Your password"}
                     value={password}
@@ -187,7 +178,7 @@ export default function AuthForm({
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     aria-pressed={showPassword}
                     onClick={() => setShowPassword((current) => !current)}
-                    className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <EyeIcon hidden={showPassword} />
                   </button>
@@ -195,6 +186,16 @@ export default function AuthForm({
                 {showPasswordRequirement ? (
                   <span className="block text-xs font-medium leading-5 text-rose-700">
                     Password must be at least 6 characters long and include a number and a symbol.
+                  </span>
+                ) : null}
+                {passwordError ? (
+                  <span
+                    id="auth-password-error"
+                    className="auth-inline-error block text-sm font-semibold leading-5"
+                    role="alert"
+                    aria-live="polite"
+                  >
+                    {passwordError}
                   </span>
                 ) : null}
               </label>
@@ -220,6 +221,12 @@ export default function AuthForm({
               </p>
             ) : null}
 
+            {formError ? (
+              <p className="auth-inline-error text-sm font-semibold leading-5" role="alert" aria-live="polite">
+                {formError}
+              </p>
+            ) : null}
+
             <button
               type="submit"
               disabled={submitDisabled}
@@ -236,6 +243,12 @@ export default function AuthForm({
                 "Log in"
               )}
             </button>
+
+            {showPasswordRecoveryStatus ? (
+              <p className="auth-forgot-password-placeholder text-center text-sm font-semibold">
+                Password recovery is not available yet. Check the email and password, or use a different account.
+              </p>
+            ) : null}
           </form>
         </div>
 

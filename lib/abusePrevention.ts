@@ -71,12 +71,13 @@ export function checkViewerAndIpRateLimit(
 export function logAbuseEvent(
   action: AbuseAction,
   reason: string,
-  context: { viewerId?: string; ip?: string; dealId?: string },
+  context: { viewerId?: string; ip?: string; dealId?: string; commentId?: string },
 ) {
   console.warn("Abuse prevention event", {
     action,
     reason,
     dealId: context.dealId,
+    commentId: context.commentId,
     viewer: context.viewerId ? hashRateLimitPart(context.viewerId) : undefined,
     ip: context.ip ? hashRateLimitPart(context.ip) : undefined,
   });

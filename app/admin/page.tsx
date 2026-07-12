@@ -24,6 +24,16 @@ export const metadata = {
   description: "Admin dashboard for deal moderation and review.",
 };
 
+const moderationNotices: Record<string, string> = {
+  "comment-deleted": "Comment and its replies were deleted.",
+  "comment-reports-cleared": "Comment reports cleared; the comment remains visible.",
+  "deal-approved": "Deal marked approved.",
+  "deal-deleted": "Deal permanently deleted.",
+  "deal-pending": "Deal marked pending.",
+  "deal-rejected": "Deal marked rejected.",
+  "deal-restored": "Deal restored and reports cleared.",
+};
+
 function getUserStatus(input: {
   email: string;
   approvedDeals: number;
@@ -97,11 +107,36 @@ function getPercent(numerator: number, denominator: number) {
 /**
  * Renders the admin dashboard shell and moderation table for submitted deals.
  */
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string }>;
+}) {
+  const { notice = "" } = await searchParams;
+  const moderationNotice = moderationNotices[notice] ?? "";
   const user = await getCurrentUser();
   const isAdmin = isAdminUser(user);
   const adminEmails = getAdminEmails();
   const hasAdminConfig = adminEmails.length > 0;
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-slate-50 px-4 py-16 text-center text-slate-900 sm:px-6 lg:px-8">
+        <div className="mx-auto inline-flex max-w-xl flex-col items-center rounded-3xl border border-slate-200 bg-white p-16 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Access Denied</p>
+          <h1 className="mt-4 text-3xl font-semibold text-slate-950">
+            {user ? "You do not have permission to view this page." : "Please sign in with an admin account."}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {hasAdminConfig
+              ? "This section is restricted to administrators only."
+              : "Set ADMIN_EMAILS in .env.local with comma-separated admin email addresses, then restart the dev server."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const [dealsResult, commentsResult] = await Promise.all([getDealsResult(), getAdminCommentsResult()]);
   const deals = dealsResult.ok ? dealsResult.data : [];
   const comments = commentsResult.ok ? commentsResult.data : [];
@@ -112,6 +147,7 @@ export default async function AdminDashboardPage() {
   const approvedDealCount = deals.filter((deal) => deal.status === "approved").length;
   const rejectedDealCount = deals.filter((deal) => deal.status === "rejected").length;
   const reportedDealCount = deals.filter((deal) => deal.reportCount > 0).length;
+  const reportedCommentCount = comments.filter((comment) => comment.reportCount > 0).length;
   const trustedUserCount = userRows.filter((row) => row.status === "trusted").length;
   const reviewUserCount = userRows.filter((row) => row.status === "needs-review").length;
   const autoApprovedDealCount = deals.filter((deal) =>
@@ -142,25 +178,9 @@ export default async function AdminDashboardPage() {
     body: comment.body,
     likeCount: comment.likeCount,
     createdAt: comment.createdAt,
+    reportCount: comment.reportCount,
+    reportReasons: comment.reportReasons,
   }));
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-slate-50 px-4 py-16 text-center text-slate-900 sm:px-6 lg:px-8">
-        <div className="mx-auto inline-flex max-w-xl flex-col items-center rounded-3xl border border-slate-200 bg-white p-16 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Access Denied</p>
-          <h1 className="mt-4 text-3xl font-semibold text-slate-950">
-            {user ? "You do not have permission to view this page." : "Please sign in with an admin account."}
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {hasAdminConfig
-              ? "This section is restricted to administrators only."
-              : "Set ADMIN_EMAILS in .env.local with comma-separated admin email addresses, then restart the dev server."}
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -195,7 +215,12 @@ export default async function AdminDashboardPage() {
           </aside>
 
           <section className="flex-1 space-y-6">
-            <div id="overview" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            {moderationNotice ? (
+              <p className="theme-alert theme-alert-success px-4 py-3 text-sm font-semibold" role="status">
+                {moderationNotice}
+              </p>
+            ) : null}
+            <div id="overview" className="pb-2 sm:pb-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
@@ -214,12 +239,13 @@ export default async function AdminDashboardPage() {
               </div>
 
               {dealsUnavailable || commentsUnavailable ? (
-                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-                  {dealsUnavailable && commentsUnavailable
+                <div className="theme-alert theme-alert-warning mt-6 flex flex-wrap items-center justify-between gap-3 p-4 text-sm font-semibold" role="alert">
+                  <span>{dealsUnavailable && commentsUnavailable
                     ? "Deals and comments are temporarily unavailable."
                     : dealsUnavailable
                       ? "Deals are temporarily unavailable."
-                      : "Comments are temporarily unavailable."}
+                      : "Comments are temporarily unavailable."}</span>
+                  <a href="/admin" className="inline-flex h-10 items-center justify-center rounded-full border border-current px-4 text-xs font-bold">Try again</a>
                 </div>
               ) : null}
 
@@ -267,7 +293,7 @@ export default async function AdminDashboardPage() {
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-sm font-semibold text-slate-950">{comments.length} comments</p>
-                  <p className="mt-1 text-sm text-slate-600">Available for discussion cleanup.</p>
+                  <p className="mt-1 text-sm text-slate-600">{reportedCommentCount} reported and prioritized for review.</p>
                 </div>
               </div>
             </div>

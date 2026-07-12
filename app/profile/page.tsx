@@ -10,10 +10,14 @@ import { getCommentCountsByDealIds, getCommentsByAuthorUserIdResult } from "@/li
 import { getSavedDealsForUserResult } from "@/lib/savedDeals";
 import { getDealVoteViewerAliases, getDealVoteViewerId } from "@/lib/dealVoteIdentity";
 import { createDefaultAccountSettings } from "@/lib/accountSettings";
-import { getAccountSettingsForUser } from "@/lib/userSettings";
-import { getFollowSummaryForUser } from "@/lib/follows";
+import { ensureAccountSettingsForUser } from "@/lib/userSettings";
+import { getFollowerUserIdsForUser, getFollowedUserIdsForUser, getFollowSummaryForUser } from "@/lib/follows";
+import { getAccountSettingsByUserIds } from "@/lib/userSettings";
+import { getUserProfilePath } from "@/lib/userHandles";
 import ProfileActivityTabs from "./ProfileActivityTabs";
 import ProfileHeaderClient from "./ProfileHeaderClient";
+import type { ProfileFollowListItem } from "./ProfileFollowLists";
+import ProfileLoadError from "./ProfileLoadError";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +47,7 @@ function formatJoinedDate(value?: string) {
   return new Intl.DateTimeFormat("en-MY", {
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Kuala_Lumpur",
   }).format(date);
 }
 
@@ -65,9 +70,10 @@ export default async function ProfilePage() {
   const rawSavedDeals = savedDealsResult.ok ? savedDealsResult.data : [];
   const comments = commentsResult.ok ? commentsResult.data : [];
   const displayName = getDisplayName(user);
-  const settings = await getAccountSettingsForUser(user.id, displayName).catch(() =>
-    createDefaultAccountSettings(displayName),
-  );
+  const settings = await ensureAccountSettingsForUser(user.id, displayName, user.user_metadata.name ?? displayName, {
+    ownerUsername: user.user_metadata.name ?? displayName,
+    email: user.email ?? "",
+  }).catch(() => createDefaultAccountSettings(displayName));
   const joinedDate = formatJoinedDate(user.joinedAt);
   const profileDealIds = Array.from(
     new Set([
@@ -96,12 +102,33 @@ export default async function ProfilePage() {
   }));
   const initialVotes = Object.fromEntries(viewerVotes);
   const savedDealIds = savedDeals.map((savedDeal) => savedDeal.deal.id);
+  const [followerUserIds, followedUserIds] = await Promise.all([
+    getFollowerUserIdsForUser(user.id),
+    getFollowedUserIdsForUser(user.id),
+  ]);
+  const relationshipUserIds = [...followerUserIds, ...followedUserIds];
+  const relationshipSettings = await getAccountSettingsByUserIds(relationshipUserIds).catch(() => new Map());
+  const toFollowListItem = (relatedUserId: string): ProfileFollowListItem => {
+    const related = relationshipSettings.get(relatedUserId);
+    const displayName = related?.profile.displayName || "Deal Rakyat member";
+    const userName = related?.profile.userName || `member-${relatedUserId.slice(0, 6)}`;
+    return {
+      userId: relatedUserId,
+      displayName,
+      userName,
+      avatarUrl: related?.profile.avatarUrl || "",
+      href: related?.toggles.publicProfile === false ? "" : getUserProfilePath(relatedUserId, userName),
+    };
+  };
+  const followerProfiles = Array.from(followerUserIds, toFollowListItem);
+  const followingProfiles = Array.from(followedUserIds, toFollowListItem);
 
   return (
     <main className="home-page min-h-screen px-4 py-5 text-slate-900 sm:px-6 sm:py-6 lg:px-8">
       <div className="mx-auto grid max-w-[1200px] gap-4">
         <ProfileHeaderClient
-          initialDisplayName={settings.profile.userName || displayName}
+          initialDisplayName={settings.profile.displayName || displayName}
+          initialUserName={settings.profile.userName}
           initialEmail={user.email}
           initialAvatarUrl={settings.profile.avatarUrl}
           initialBio={settings.profile.bio}
@@ -114,19 +141,13 @@ export default async function ProfilePage() {
 
         <section className="home-panel">
           {!dealsResult.ok ? (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-              Submitted deals are temporarily unavailable.
-            </div>
+            <ProfileLoadError message="Submitted deals are temporarily unavailable." retryHref="/profile" />
           ) : null}
           {!savedDealsResult.ok ? (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-              Saved deals are temporarily unavailable.
-            </div>
+            <ProfileLoadError message="Saved deals are temporarily unavailable." retryHref="/profile" />
           ) : null}
           {!commentsResult.ok ? (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-              Comment history is temporarily unavailable.
-            </div>
+            <ProfileLoadError message="Comment history is temporarily unavailable." retryHref="/profile" />
           ) : null}
           <ProfileActivityTabs
             postedDeals={postedDeals}
@@ -136,6 +157,9 @@ export default async function ProfilePage() {
             savedDealIds={savedDealIds}
             voteStorageScope={dealVoteViewerId}
             showStats
+            showOwnerActions
+            followerProfiles={followerProfiles}
+            followingProfiles={followingProfiles}
             stats={{
               upvotesGiven: voteStats.upvotesGiven,
               upvotesReceived: voteStats.upvotesReceived,

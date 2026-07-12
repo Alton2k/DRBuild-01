@@ -14,6 +14,7 @@ import { getAccountSettingsByProfileUserName, getAccountSettingsForUser } from "
 import { getFollowSummaryForUser } from "@/lib/follows";
 import ProfileActivityTabs from "../ProfileActivityTabs";
 import ProfileHeaderClient from "../ProfileHeaderClient";
+import ProfileLoadError from "../ProfileLoadError";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ function formatJoinedDate(value?: string) {
   return new Intl.DateTimeFormat("en-MY", {
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Kuala_Lumpur",
   }).format(date);
 }
 
@@ -134,7 +136,8 @@ export default async function PublicProfilePage({
     <main className="home-page min-h-screen px-4 py-5 text-slate-900 sm:px-6 sm:py-6 lg:px-8">
       <div className="mx-auto grid max-w-[1200px] gap-4">
         <ProfileHeaderClient
-          initialDisplayName={settings.profile.userName || fallbackDisplayName}
+          initialDisplayName={settings.profile.displayName || fallbackDisplayName}
+          initialUserName={settings.profile.userName}
           initialAvatarUrl={settings.profile.avatarUrl}
           initialBio={settings.profile.bio}
           joinedDate={joinedDate}
@@ -150,19 +153,13 @@ export default async function PublicProfilePage({
 
         <section className="home-panel">
           {!dealsResult.ok ? (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-              Submitted deals are temporarily unavailable.
-            </div>
+            <ProfileLoadError message="Submitted deals are temporarily unavailable." retryHref={`/profile/${encodeURIComponent(profileIdentifier)}`} />
           ) : null}
           {settings.toggles.showComments && !commentsResult.ok ? (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-              Comment history is temporarily unavailable.
-            </div>
+            <ProfileLoadError message="Comment history is temporarily unavailable." retryHref={`/profile/${encodeURIComponent(profileIdentifier)}`} />
           ) : null}
           {!savedDealsResult.ok ? (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-              Saved deals are temporarily unavailable.
-            </div>
+            <ProfileLoadError message="Saved deals are temporarily unavailable." retryHref={`/profile/${encodeURIComponent(profileIdentifier)}`} />
           ) : null}
           <ProfileActivityTabs
             postedDeals={postedDealsWithCommentCounts}

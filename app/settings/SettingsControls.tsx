@@ -107,15 +107,20 @@ export function NotificationToggle({
         aria-checked={enabled}
         disabled={disabled}
         onClick={() => onChange(!enabled)}
-        className={`relative h-7 w-12 shrink-0 rounded-full p-1 shadow-inner transition disabled:cursor-not-allowed disabled:opacity-60 ${
-          enabled ? "bg-[#dc115e]" : "bg-slate-200"
-        }`}
+        className="relative flex h-11 w-12 shrink-0 items-center rounded-full transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span
-          className={`block h-5 w-5 rounded-full bg-white shadow-sm transition ${
-            enabled ? "translate-x-5" : "translate-x-0"
+          aria-hidden="true"
+          className={`relative block h-7 w-12 rounded-full p-1 shadow-inner transition ${
+            enabled ? "bg-[#dc115e]" : "bg-slate-200"
           }`}
-        />
+        >
+          <span
+            className={`block h-5 w-5 rounded-full bg-white shadow-sm transition ${
+              enabled ? "translate-x-5" : "translate-x-0"
+            }`}
+          />
+        </span>
       </button>
     </div>
   );

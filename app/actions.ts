@@ -13,10 +13,11 @@ import {
   reportDeal,
   restoreReportedDeal,
   updateDealStatus,
+  updateOwnDeal,
   voteDeal,
   type DealStatus,
 } from "@/lib/deals";
-import { createComment, deleteComment, deleteOwnComment, hasDuplicateComment, likeComment } from "@/lib/comments";
+import { clearCommentReports, createComment, deleteComment, deleteOwnComment, hasCommentReportForViewer, hasDuplicateComment, likeComment, reportComment, updateOwnComment } from "@/lib/comments";
 import {
   getCurrentUser,
   getPublicUserDisplayName,
@@ -30,6 +31,7 @@ import { getAccountSettingsForUser } from "@/lib/userSettings";
 import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
 import { validateDealUrl } from "@/lib/dealUrlSecurity";
 import { getDealTitleValidationError } from "@/lib/dealTitleValidation";
+import { getDealDescriptionValidationError } from "@/lib/dealDescriptionValidation";
 import {
   getAnonymousDealVoteViewerId,
   getAuthenticatedDealVoteViewerId,
@@ -46,6 +48,7 @@ import {
 import {
   getString,
   isDealStatus,
+  isCommentReportReason,
   isReportReason,
   isValidActionId,
   isVoteDirection,
@@ -79,6 +82,18 @@ export type CommentActionState = {
   ok: boolean;
   message: string;
   postedAt?: number;
+};
+
+export type EditCommentActionResult = {
+  ok: boolean;
+  message: string;
+  body?: string;
+  editedAt?: string;
+};
+
+export type ReportCommentActionResult = {
+  ok: boolean;
+  message: string;
 };
 
 export type SaveDealActionResult = {
@@ -125,6 +140,7 @@ const suspiciousHostFragments = [
   "t.me",
   "telegram.me",
 ];
+const maxDealGalleryImages = 8;
 
 const emptyFollowCounts = { followers: 0, following: 0 };
 
@@ -164,7 +180,7 @@ function normalizeImageGalleryUrls(value: string, baseUrl: string) {
     return parsed
       .map((item) => (typeof item === "string" ? normalizeOptionalImageUrl(item, baseUrl) : ""))
       .filter((item): item is string => Boolean(item))
-      .slice(0, 5);
+      .slice(0, maxDealGalleryImages);
   } catch {
     return [];
   }
@@ -391,9 +407,8 @@ export async function createDealAction(
     errors.expiresAt = expiration.error;
   }
 
-  if (!descriptionText) {
-    errors.description = "Description is required.";
-  }
+  const descriptionError = getDealDescriptionValidationError(description, descriptionText);
+  if (descriptionError) errors.description = descriptionError;
 
   if (Object.keys(errors).length > 0 || price === null) {
     return {
@@ -479,10 +494,143 @@ export async function createDealAction(
   };
 }
 
+export async function updateOwnDealAction(
+  dealId: string,
+  _previousState: DealActionState,
+  formData: FormData,
+): Promise<DealActionState> {
+  if (!isValidActionId(dealId)) {
+    return { ok: false, message: "Could not find this deal. Please refresh and try again." };
+  }
+
+  let user;
+  try {
+    user = await requireCurrentUser();
+  } catch {
+    return { ok: false, message: "Please log in again before saving this deal." };
+  }
+
+  const existingDeal = await getDealById(dealId);
+  if (!existingDeal || existingDeal.authorUserId !== user.id) {
+    return { ok: false, message: "Only the deal owner can edit this submission." };
+  }
+
+  const title = getString(formData, "title");
+  const url = getString(formData, "url");
+  const priceValue = getString(formData, "price");
+  const originalPriceValue = getString(formData, "originalPrice");
+  const shippingMode = getString(formData, "shippingMode");
+  const shippingCostValue = getString(formData, "shippingCost");
+  const store = getString(formData, "store");
+  const category = getString(formData, "category");
+  const subCategory = getString(formData, "subCategory");
+  const expiresAtValue = getString(formData, "expiresAt");
+  const description = sanitizeDescriptionHtml(getString(formData, "description"));
+  const descriptionText = getDescriptionText(description);
+  const rawImageUrl = getString(formData, "imageUrl");
+  const rawUploadedImageUrl = getString(formData, "uploadedImageUrl");
+  const rawImageGalleryUrls = getString(formData, "imageGalleryUrls");
+  const errors: DealActionState["errors"] = {};
+  const price = parsePositiveNumber(priceValue);
+  const originalPrice = originalPriceValue ? parsePositiveNumber(originalPriceValue) : null;
+  const hasFreeShipping = shippingMode !== "paid";
+  const shippingCost = hasFreeShipping ? 0 : parseNonNegativeNumber(shippingCostValue);
+  const expiration = parseFutureExpiration(expiresAtValue);
+  const titleError = getDealTitleValidationError(title);
+
+  if (titleError) errors.title = titleError;
+  const urlValidation = url ? validateDealUrl(url) : null;
+  if (!url) errors.url = "Deal URL is required.";
+  else if (!urlValidation?.ok) errors.url = urlValidation?.error ?? "Enter a valid URL starting with http:// or https://.";
+  if (price === null) errors.price = "Price must be greater than 0.";
+  if (originalPriceValue && originalPrice === null) errors.originalPrice = "Original price must be a positive number.";
+  else if (price !== null && originalPrice !== null && originalPrice <= price) errors.originalPrice = "Original price should be higher than current price.";
+  if (!hasFreeShipping && shippingCost === null) errors.shippingCost = "Shipping cost must be 0 or more.";
+  if (!store) errors.store = "Store or availability is required.";
+  if (!category) errors.category = "Category is required.";
+  if (expiration.error) errors.expiresAt = expiration.error;
+  const descriptionError = getDealDescriptionValidationError(description, descriptionText);
+  if (descriptionError) errors.description = descriptionError;
+
+  if (Object.keys(errors).length > 0 || price === null) {
+    return { ok: false, message: "Please fix the highlighted fields.", errors };
+  }
+
+  const normalizedUrl = urlValidation?.ok ? urlValidation.url : url;
+  const imageGalleryUrls = normalizeImageGalleryUrls(rawImageGalleryUrls, normalizedUrl);
+  const uploadedImageUrl = imageGalleryUrls[0] ?? normalizeOptionalImageUrl(rawUploadedImageUrl, normalizedUrl);
+  const imageUrl = uploadedImageUrl || normalizeOptionalImageUrl(rawImageUrl, normalizedUrl);
+  const duplicateMatch = await findDuplicateDeal({ title, url: normalizedUrl, store, excludeDealId: dealId });
+  const automatedSignals = getAutomatedModerationSignals({
+    title,
+    description: descriptionText,
+    store,
+    category,
+    subCategory,
+    url: normalizedUrl,
+    hasImage: Boolean(imageUrl || uploadedImageUrl || imageGalleryUrls.length > 0),
+  });
+  const isAdmin = isAdminUser(user);
+  const nextStatus: DealStatus = isAdmin ? existingDeal.status : "pending";
+  const moderationReason = isAdmin
+    ? "admin_owner_edit"
+    : duplicateMatch
+      ? "owner_edit_duplicate_manual_review"
+      : automatedSignals.length > 0
+        ? `owner_edit_${getPrimaryModerationSignal(automatedSignals)}`
+        : "owner_edit_manual_review";
+
+  try {
+    const updatedDeal = await updateOwnDeal(dealId, user.id, {
+      title,
+      url: normalizedUrl,
+      price,
+      originalPrice,
+      hasFreeShipping,
+      shippingCost,
+      store,
+      category,
+      subCategory,
+      description,
+      imageUrl,
+      uploadedImageUrl,
+      imageGalleryUrls,
+      expiredAt: expiration.expiresAt,
+      status: nextStatus,
+      moderationReason,
+      duplicateOfDealId: duplicateMatch?.deal.id,
+      duplicateReason: duplicateMatch?.reason || automatedSignals.join(", "),
+    });
+
+    if (!updatedDeal) {
+      return { ok: false, message: "Only the deal owner can edit this submission." };
+    }
+
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/profile");
+    revalidatePath(`/deal/${dealId}`);
+    revalidatePath(`/deal/${dealId}/edit`);
+
+    return {
+      ok: true,
+      message: isAdmin
+        ? "Deal changes saved. The current moderation status was preserved."
+        : "Deal changes saved and submitted for moderation.",
+      dealId,
+      dealStatus: nextStatus,
+    };
+  } catch (error) {
+    console.error("Could not update deal", error);
+    return { ok: false, message: "Could not save this deal right now. Please try again." };
+  }
+}
+
 export async function checkDuplicateDealAction(input: {
   title: string;
   url: string;
   store: string;
+  excludeDealId?: string;
 }): Promise<DuplicateDealCheckResult> {
   const title = typeof input.title === "string" ? input.title.trim() : "";
   const url = typeof input.url === "string" ? input.url.trim() : "";
@@ -496,7 +644,8 @@ export async function checkDuplicateDealAction(input: {
     };
   }
 
-  const duplicateMatch = await findDuplicateDeal({ title, url: urlValidation.url, store });
+  const excludeDealId = isValidActionId(input.excludeDealId) ? input.excludeDealId : undefined;
+  const duplicateMatch = await findDuplicateDeal({ title, url: urlValidation.url, store, excludeDealId });
 
   if (!duplicateMatch) {
     return {
@@ -584,7 +733,10 @@ export async function reportDealAction(
     };
   }
 
-  const result = await reportDeal(id, viewerId, reason);
+  const result = await reportDeal(id, viewerId, reason).catch((error) => {
+    console.error("Could not report deal", error);
+    return null;
+  });
 
   if (!result) {
     return {
@@ -602,6 +754,56 @@ export async function reportDealAction(
       ? "Thanks for the report. Our moderators will take a look."
       : "You’ve already reported this deal. Thanks for helping keep the community safe.",
   };
+}
+
+export async function reportCommentAction(
+  dealId: string,
+  commentId: string,
+  reason: string,
+): Promise<ReportCommentActionResult> {
+  if (!isValidActionId(dealId) || !isValidActionId(commentId)) {
+    return { ok: false, message: "Could not find this comment. Please refresh and try again." };
+  }
+
+  if (!isCommentReportReason(reason)) {
+    return { ok: false, message: "Please choose why you are reporting this comment." };
+  }
+
+  const viewerId = await getOrCreateCommentViewerId();
+  const user = await getCurrentUser();
+  const ip = await getClientIp();
+
+  if (!checkViewerAndIpRateLimit("report", viewerId, ip, 5, 60 * 60)) {
+    logAbuseEvent("report", "rate_limited", { viewerId, ip, dealId, commentId });
+    return { ok: false, message: "You’re reporting too quickly. Please try again later." };
+  }
+
+  if (await hasCommentReportForViewer(commentId, viewerId)) {
+    logAbuseEvent("report", "duplicate_comment_report", { viewerId, ip, dealId, commentId });
+    return { ok: false, message: "You’ve already reported this comment. Our moderators can see it." };
+  }
+
+  try {
+    const result = await reportComment(dealId, commentId, viewerId, reason, user?.id);
+    if (!result) {
+      return { ok: false, message: "Could not report this comment. It may no longer be available." };
+    }
+    if (result.isOwnComment) {
+      return { ok: false, message: "You can edit or delete your own comment instead of reporting it." };
+    }
+
+    revalidatePath("/admin");
+    revalidatePath(`/deal/${dealId}`);
+    return {
+      ok: result.didReport,
+      message: result.didReport
+        ? "Thanks for the report. Our moderators will review this comment."
+        : "You’ve already reported this comment. Our moderators can see it.",
+    };
+  } catch (error) {
+    console.error("Could not report comment", error);
+    return { ok: false, message: "Could not report this comment right now. Please try again." };
+  }
 }
 
 export async function restoreReportedDealAction(id: string) {
@@ -677,7 +879,10 @@ export async function voteDealAction(
     };
   }
 
-  const result = await voteDeal(id, viewerId, direction, user?.id, viewerAliases);
+  const result = await voteDeal(id, viewerId, direction, user?.id, viewerAliases).catch((error) => {
+    console.error("Could not save deal vote", error);
+    return null;
+  });
 
   if (!result) {
     return {
@@ -733,7 +938,7 @@ export async function createCommentAction(
 
   const fallbackAuthorName = user.user_metadata.full_name ?? user.user_metadata.name ?? user.email ?? "Deal Rakyat member";
   const authorSettings = await getAccountSettingsForUser(user.id, fallbackAuthorName).catch(() => null);
-  const authorName = authorSettings?.profile.userName || fallbackAuthorName;
+  const authorName = authorSettings?.profile.displayName || fallbackAuthorName;
   const commentValidation = validateCommentBody(getString(formData, "body"));
   const parentId = getString(formData, "parentId") || null;
 
@@ -779,7 +984,7 @@ export async function createCommentAction(
     };
   }
 
-  if (await hasDuplicateComment(dealId, viewerId, commentValidation.body)) {
+  if (await hasDuplicateComment(dealId, viewerId, commentValidation.body, user.id)) {
     logAbuseEvent("comment", "duplicate_comment", { viewerId, ip, dealId });
 
     return {
@@ -788,14 +993,22 @@ export async function createCommentAction(
     };
   }
 
-  await createComment({
-    dealId,
-    parentId,
-    authorViewerId: viewerId,
-    authorUserId: user.id,
-    authorName,
-    body: commentValidation.body,
-  });
+  try {
+    await createComment({
+      dealId,
+      parentId,
+      authorViewerId: viewerId,
+      authorUserId: user.id,
+      authorName,
+      body: commentValidation.body,
+    });
+  } catch (error) {
+    console.error("Could not create comment", error);
+    if (error instanceof Error && /unique|duplicate|submissionKey/i.test(error.message)) {
+      return { ok: false, message: "You’ve already posted that comment." };
+    }
+    return { ok: false, message: "Could not post this comment. Check your connection and try again." };
+  }
 
   revalidatePath("/");
   revalidatePath(`/deal/${dealId}`);
@@ -828,7 +1041,10 @@ export async function likeCommentAction(dealId: string, commentId: string) {
   }
 
   const viewerId = await getOrCreateCommentViewerId();
-  const result = await likeComment(dealId, commentId, viewerId);
+  const result = await likeComment(dealId, commentId, viewerId).catch((error) => {
+    console.error("Could not update comment like", error);
+    return null;
+  });
 
   if (!result) {
     return {
@@ -850,7 +1066,7 @@ export async function likeCommentAction(dealId: string, commentId: string) {
 }
 
 export async function deleteOwnCommentAction(dealId: string, commentId: string) {
-  if (!isValidActionId(dealId) || !isValidActionId(commentId)) {
+  if ((dealId && !isValidActionId(dealId)) || !isValidActionId(commentId)) {
     return { ok: false };
   }
 
@@ -865,17 +1081,69 @@ export async function deleteOwnCommentAction(dealId: string, commentId: string) 
   const result = await deleteOwnComment(commentId, {
     viewerId,
     authorUserId: user?.id,
+  }).catch((error) => {
+    console.error("Could not delete own comment", error);
+    return null;
   });
 
-  if (!result || result.dealId !== dealId) {
+  if (!result || (dealId && result.dealId !== dealId)) {
     return { ok: false };
   }
 
   revalidatePath("/");
-  revalidatePath(`/deal/${dealId}`);
+  if (result.dealId) {
+    revalidatePath(`/deal/${result.dealId}`);
+  }
   revalidatePath("/profile");
 
   return { ok: true };
+}
+
+export async function editOwnCommentAction(
+  dealId: string,
+  commentId: string,
+  body: string,
+): Promise<EditCommentActionResult> {
+  if (!isValidActionId(dealId) || !isValidActionId(commentId)) {
+    return { ok: false, message: "Could not find this comment. Please refresh and try again." };
+  }
+
+  const validation = validateCommentBody(typeof body === "string" ? body : "");
+  if (!validation.ok) {
+    return { ok: false, message: validation.message };
+  }
+
+  const cookieStore = await cookies();
+  const viewerId = cookieStore.get(commentViewerCookieName)?.value;
+  const user = await getCurrentUser();
+
+  if (!viewerId && !user) {
+    return { ok: false, message: "Please log in again before editing this comment." };
+  }
+
+  try {
+    const comment = await updateOwnComment(commentId, dealId, validation.body, {
+      viewerId,
+      authorUserId: user?.id,
+    });
+
+    if (!comment) {
+      return { ok: false, message: "Only the comment owner can edit this comment." };
+    }
+
+    revalidatePath(`/deal/${dealId}`);
+    revalidatePath("/profile");
+
+    return {
+      ok: true,
+      message: "Comment updated.",
+      body: comment.body,
+      editedAt: comment.editedAt ?? new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("Could not update comment", error);
+    return { ok: false, message: "Could not update this comment. Please try again." };
+  }
 }
 
 export async function toggleSavedDealAction(
@@ -1069,10 +1337,23 @@ export async function deleteCommentAsAdminAction(commentId: string) {
 
   revalidatePath("/");
   revalidatePath("/admin");
-  revalidatePath(`/deal/${result.dealId}`);
+  if (result.dealId) {
+    revalidatePath(`/deal/${result.dealId}`);
+  }
 
   return {
     ok: true,
     dealId: result.dealId,
   };
+}
+
+export async function clearCommentReportsAsAdminAction(commentId: string) {
+  await requireAdminUser();
+  if (!isValidActionId(commentId)) return { ok: false };
+
+  const result = await clearCommentReports(commentId);
+  if (!result) return { ok: false };
+  revalidatePath("/admin");
+  if (result.dealId) revalidatePath(`/deal/${result.dealId}`);
+  return { ok: true };
 }

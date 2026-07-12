@@ -7,6 +7,7 @@
     "build": "strapi build",
     "console": "strapi console",
     "deploy": "strapi deploy",
+    "db:check": "node --env-file-if-exists=.env scripts/check-database-readiness.mjs",
     "dev": "strapi develop",
     "develop": "strapi develop",
     "start": "strapi start",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@strapi/plugin-cloud": "5.44.0",
     "@strapi/plugin-users-permissions": "5.44.0",
+    "@strapi/provider-upload-aws-s3": "5.44.0",
     "@strapi/strapi": "5.44.0",
     "better-sqlite3": "12.8.0",
     "pg": "^8.20.0",

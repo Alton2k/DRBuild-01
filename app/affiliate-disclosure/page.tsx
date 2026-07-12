@@ -3,7 +3,7 @@ import InfoPage from "../infoPage";
 
 export const metadata: Metadata = {
   title: "Affiliate Disclosure - Deal Rakyat",
-  description: "Draft affiliate disclosure for Deal Rakyat.",
+  description: "Affiliate disclosure for Deal Rakyat.",
 };
 
 export default function AffiliateDisclosurePage() {
@@ -11,13 +11,13 @@ export default function AffiliateDisclosurePage() {
     <InfoPage
       eyebrow="Transparency"
       title="Affiliate Disclosure"
-      intro="This draft disclosure explains how Deal Rakyat may use affiliate links or earn commissions from some merchant links."
+      intro="Deal Rakyat does not currently add affiliate tracking to community links or earn commissions from purchases. This disclosure must be updated before any affiliate programme is enabled."
       sections={[
         {
           title: "How affiliate links work",
           body: [
-            "Some outbound links on Deal Rakyat may contain affiliate tracking. If a user clicks one of these links and later completes a purchase, Deal Rakyat may receive a commission from the merchant, affiliate network, or platform.",
-            "This commission should not add extra cost to the user. The final price, delivery fees, warranty, returns, taxes, and order terms remain controlled by the merchant or platform.",
+            "Current outbound deal links take users to the merchant URL submitted with the deal; Deal Rakyat does not currently add commission tracking.",
+            "The final price, delivery fees, warranty, returns, taxes, and order terms are controlled by the merchant or platform, not Deal Rakyat.",
           ],
         },
         {
@@ -31,13 +31,13 @@ export default function AffiliateDisclosurePage() {
           title: "User and merchant submissions",
           body: [
             "Users who have a commercial relationship with a merchant, brand, agency, or affiliate programme should disclose that relationship when posting or commenting.",
-            "Deal Rakyat may add, remove, or replace affiliate tracking on outbound links where appropriate, while keeping the original deal discussion available to the community where possible.",
+            "Deal Rakyat will publish updated disclosure wording before adding or replacing outbound links with affiliate tracking.",
           ],
         },
         {
           title: "Questions or concerns",
           body: [
-            "Users can report undisclosed promotion, suspicious merchant behaviour, or misleading affiliate activity through the contact placeholders on the Contact page.",
+            "Users can report undisclosed promotion, suspicious merchant behaviour, or misleading commercial activity through the deal reporting controls or email support@dealrakyat.my.",
           ],
         },
       ]}

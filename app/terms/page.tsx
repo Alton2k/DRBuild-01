@@ -3,21 +3,21 @@ import InfoPage from "../infoPage";
 
 export const metadata: Metadata = {
   title: "Terms - Deal Rakyat",
-  description: "Draft terms for using Deal Rakyat.",
+  description: "Terms for using Deal Rakyat.",
 };
 
 export default function TermsPage() {
   return (
     <InfoPage
-      eyebrow="Legal Draft"
+      eyebrow="Legal"
       title="Terms of Use"
-      intro="These draft terms explain the basic rules for using Deal Rakyat, including accounts, user-submitted deals, moderation, affiliate links, and takedown requests."
+      intro="These terms explain the rules for using Deal Rakyat, including accounts, user-submitted deals, moderation, outbound links, and content review requests."
       sections={[
         {
           title: "Using Deal Rakyat",
           body: [
-            "Deal Rakyat is a community deals platform for Malaysia. By using the site, creating an account, submitting a deal, voting, commenting, or reporting content, users agree to follow these draft terms and the Community Rules.",
-            "The site may change over time. Features can be added, removed, paused, or limited, especially while the product is still being prepared for launch.",
+            "Deal Rakyat is a community deals platform for Malaysia. By using the site, creating an account, submitting a deal, voting, commenting, or reporting content, users agree to follow these terms and the Community Rules.",
+            "Features may be changed, removed, paused, or limited when needed for security, moderation, maintenance, or service quality.",
           ],
         },
         {
@@ -44,14 +44,14 @@ export default function TermsPage() {
         {
           title: "Affiliate links and commissions",
           body: [
-            "Some links may include affiliate tracking. Deal Rakyat may earn a commission if a user clicks through and completes a purchase. This should not increase the price paid by the user.",
-            "Affiliate links do not make Deal Rakyat the seller, merchant, delivery provider, warranty provider, or payment processor. Any purchase is between the user and the relevant merchant or platform.",
+            "Deal Rakyat does not currently add affiliate tracking to community links or earn commissions from purchases. The Affiliate Disclosure will be updated before any affiliate programme is enabled.",
+            "Outbound links do not make Deal Rakyat the seller, merchant, delivery provider, warranty provider, or payment processor. Any purchase is between the user and the relevant merchant or platform.",
           ],
         },
         {
           title: "Takedown requests",
           body: [
-            "Rights holders, merchants, users, or affected parties can request review or takedown of content that is unlawful, misleading, infringing, unsafe, confidential, or otherwise inappropriate. Use the contact placeholders on the Contact page until formal channels are confirmed.",
+            "Rights holders, merchants, users, or affected parties can request review of content that is unlawful, misleading, infringing, unsafe, confidential, or otherwise inappropriate. Use the in-product report controls where available or email formal requests to legal@dealrakyat.my.",
             "A useful takedown request should identify the content, explain the issue, provide contact details, and include supporting information. Deal Rakyat may ask for more information before taking action.",
           ],
         },

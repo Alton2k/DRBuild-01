@@ -14,6 +14,7 @@ function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en-MY", {
     day: "numeric",
     month: "short",
+    timeZone: "Asia/Kuala_Lumpur",
   }).format(new Date(value));
 }
 
@@ -80,6 +81,8 @@ export default function HomeDealCard({
               <UserImage
                 src={thumbnailUrl}
                 alt=""
+                width={800}
+                height={600}
                 className={`h-full w-full object-contain p-3 transition duration-200 hover:scale-[1.02] ${
                   deal.isExpired ? "grayscale" : ""
                 }`}
@@ -136,21 +139,21 @@ export default function HomeDealCard({
               Get Deal
             </Link>
 
-            <div className="home-deal-card-actions mt-3 flex items-center gap-1.5 border-t pt-2.5">
+            <div className="home-deal-card-actions mt-3 grid grid-cols-[36px_20px_repeat(4,36px)_minmax(40px,1fr)] items-center justify-between border-t pt-2.5">
               <DealVoteButtons
                 dealId={deal.id}
                 initialScore={deal.score}
                 initialVote={initialVote}
                 voteStorageScope={voteStorageScope}
                 disabled={deal.isExpired}
-                buttonClassName="inline-flex h-6 w-6 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:h-3.5 [&_svg]:w-3.5"
-                containerClassName="inline-flex items-center gap-0.5 rounded-full border-0 bg-transparent p-0 shadow-none"
-                scoreClassName="min-w-4 text-center text-xs font-bold tabular-nums"
+                buttonClassName="inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:h-4 [&_svg]:w-4"
+                flat
+                scoreClassName="inline-flex h-9 w-5 items-center justify-center text-center text-xs font-bold tabular-nums"
               />
               {deal.isExpired ? (
                 <span
                   aria-label="Comments are closed for expired deals"
-                  className="home-deal-card-stat inline-flex cursor-not-allowed items-center gap-1 text-xs font-semibold opacity-45"
+                  className="home-deal-card-stat inline-flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center gap-1 text-xs font-semibold opacity-45"
                 >
                   <CommentIcon className="h-4 w-4" />
                   <span>{commentCount}</span>
@@ -159,7 +162,7 @@ export default function HomeDealCard({
                 <Link
                   href={`${dealHref}#comments`}
                   aria-label={`${commentCount} ${commentCount === 1 ? "comment" : "comments"}`}
-                  className="home-deal-card-stat home-deal-card-stat-link inline-flex items-center gap-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
+                  className="home-deal-card-stat home-deal-card-stat-link inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
                 >
                   <CommentIcon className="h-4 w-4" />
                   <span>{commentCount}</span>
@@ -170,16 +173,16 @@ export default function HomeDealCard({
                 initialSaved={initialSaved}
                 isSignedIn={isSignedIn}
                 disabled={deal.isExpired}
-                className="home-deal-card-icon-action ml-1 inline-flex h-6 w-6 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
+                className="home-deal-card-icon-action inline-flex h-9 w-9 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
               />
               <ShareDealButton
                 title={deal.title}
                 href={dealHref}
                 text={`Check out this deal on Deal Rakyat: ${deal.title}`}
                 disabled={deal.isExpired}
-                className="home-deal-card-icon-action inline-flex h-6 w-6 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
+                className="home-deal-card-icon-action inline-flex h-9 w-9 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-4 [&_svg]:w-4"
               />
-              <span className="home-deal-card-stat ml-auto whitespace-nowrap text-[0.68rem] font-semibold">
+              <span className="home-deal-card-stat min-w-0 whitespace-nowrap pr-1 text-right text-[0.68rem] font-semibold">
                 <RunningTime timestamp={deal.createdAt} />
               </span>
             </div>

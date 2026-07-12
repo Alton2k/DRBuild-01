@@ -43,6 +43,7 @@ export interface Deal {
   authorEmail: string;
   authorName: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface NewDealInput {
@@ -103,9 +104,10 @@ export type DealResult = DataResult<Deal>;
 export type DealListResult = DataResult<Deal[]>;
 export type PaginatedDealsResult = DataResult<PaginatedDeals>;
 
-type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "status" | "commentCount"> & {
+type StrapiDeal = Omit<Deal, "id" | "originalPrice" | "createdAt" | "updatedAt" | "status" | "commentCount"> & {
   originalPrice?: number | string | null;
   createdAt?: string;
+  updatedAt?: string;
   price: number | string;
   commentCount?: number | string | null;
   moderationStatus?: DealStatus;
@@ -192,6 +194,7 @@ export function toDeal(entity: Parameters<typeof getStrapiEntityFields<StrapiDea
     authorEmail: fields.authorEmail ?? "",
     authorName: fields.authorName ?? "",
     createdAt: fields.createdAt ?? new Date().toISOString(),
+    updatedAt: fields.updatedAt ?? fields.createdAt ?? new Date().toISOString(),
   };
 }
 
@@ -593,18 +596,18 @@ export async function getProfileVoteStats(dealIds: string[], viewerId: string | 
 }
 
 export async function findDuplicateDeal(
-  input: Pick<NewDealInput, "title" | "url" | "store">,
+  input: Pick<NewDealInput, "title" | "url" | "store"> & { excludeDealId?: string },
 ): Promise<DuplicateDealMatch | null> {
   const query = new URLSearchParams({
     "filters[url][$eq]": input.url,
     "filters[moderationStatus][$ne]": "rejected",
-    "pagination[pageSize]": "1",
+    "pagination[pageSize]": input.excludeDealId ? "10" : "1",
   });
   const response = await strapiRequest<StrapiListResponse<StrapiDeal>>("/api/deals", { query }).catch((error) => {
     logDataFetchError({ functionName: "findDuplicateDeal", endpoint: "/api/deals", query }, error);
     return null;
   });
-  const match = response?.data[0];
+  const match = response?.data.find((entity) => getStrapiEntityId(entity) !== input.excludeDealId);
 
   if (!match) {
     return null;
@@ -685,6 +688,48 @@ export async function createDeal(input: NewDealInput): Promise<Deal> {
   }
 
   return toDeal(response.data);
+}
+
+export async function updateOwnDeal(
+  id: string,
+  authorUserId: string,
+  input: NewDealInput,
+): Promise<Deal | null> {
+  const existing = await getDealById(id);
+
+  if (!existing || !existing.authorUserId || existing.authorUserId !== authorUserId) {
+    return null;
+  }
+
+  const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`, {
+    method: "PUT",
+    requireToken: true,
+    body: {
+      data: {
+        title: input.title,
+        url: input.url,
+        price: input.price,
+        originalPrice: input.originalPrice ?? null,
+        hasFreeShipping: Boolean(input.hasFreeShipping),
+        shippingCost: input.shippingCost ?? null,
+        store: input.store,
+        category: input.category,
+        subCategory: input.subCategory ?? "",
+        description: input.description,
+        imageUrl: input.imageUrl ?? "",
+        uploadedImageUrl: input.uploadedImageUrl ?? "",
+        imageGalleryUrls: input.imageGalleryUrls ?? [],
+        expiredAt: input.expiredAt ?? null,
+        isExpired: input.expiredAt ? isDealExpiredByDate(input.expiredAt) : false,
+        moderationStatus: input.status ?? "pending",
+        moderationReason: input.moderationReason ?? "owner_edit_manual_review",
+        duplicateOfDealId: input.duplicateOfDealId ?? "",
+        duplicateReason: input.duplicateReason ?? "",
+      },
+    },
+  });
+
+  return response.data ? toDeal(response.data) : null;
 }
 
 export async function updateDealStatus(id: string, status: DealStatus, moderationReason = "admin_manual_update") {
@@ -803,6 +848,22 @@ async function getDealReportCount(dealId: string) {
 }
 
 export async function restoreReportedDeal(id: string) {
+  while (true) {
+    const reportQuery = new URLSearchParams({
+      "filters[dealDocumentId][$eq]": id,
+      "pagination[pageSize]": "100",
+    });
+    const reports = await strapiRequest<StrapiListResponse<StrapiDealReport>>("/api/deal-reports", { query: reportQuery });
+
+    if (reports.data.length === 0) break;
+    for (const report of reports.data) {
+      await strapiRequest(`/api/deal-reports/${getStrapiEntityId(report)}`, {
+        method: "DELETE",
+        requireToken: true,
+      });
+    }
+  }
+
   const response = await strapiRequest<StrapiSingleResponse<StrapiDeal>>(`/api/deals/${id}`, {
     method: "PUT",
     requireToken: true,

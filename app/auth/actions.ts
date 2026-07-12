@@ -4,12 +4,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getStrapiUrl } from "@/lib/strapi";
 import { strapiAuthCookieName } from "@/lib/auth";
+import { ensureAccountSettingsForUser } from "@/lib/userSettings";
 
 export type AuthMode = "login" | "signup";
 
 export type AuthActionState = {
   ok: boolean;
   message: string;
+  field?: "email" | "password" | "form";
 };
 
 type StrapiAuthResponse = {
@@ -68,7 +70,7 @@ async function strapiAuthRequest(mode: AuthMode, email: string, password: string
   } catch {
     return {
       ok: false as const,
-      message: "Could not connect to Strapi. Start the backend with npm.cmd run backend:dev.",
+      message: "Could not connect to Strapi. Start the backend with npm run backend:dev.",
     };
   }
 
@@ -111,25 +113,47 @@ export async function emailAuthAction(
   const next = getAuthRedirectPath(formData);
 
   if (!email || !password) {
-    return { ok: false, message: "Email and password are required." };
+    return {
+      ok: false,
+      message: email ? "Password is required." : "Email is required.",
+      field: email ? "password" : "email",
+    };
   }
 
   if (!isValidEmail(email)) {
-    return { ok: false, message: "Enter a valid email address." };
+    return { ok: false, message: "Enter a valid email address.", field: "email" };
   }
 
   if (password.length < 6) {
-    return { ok: false, message: "Password must be at least 6 characters." };
+    return { ok: false, message: "Password must be at least 6 characters.", field: "password" };
   }
 
   if (mode === "signup" && (!/\d/.test(password) || !/[^A-Za-z0-9]/.test(password))) {
-    return { ok: false, message: "Password must include a number and a symbol." };
+    return { ok: false, message: "Password must include a number and a symbol.", field: "password" };
   }
 
   const result = await strapiAuthRequest(mode, email, password);
 
   if (!result.ok) {
-    return { ok: false, message: result.message };
+    const field = result.message.includes("connect to Strapi") || result.message.includes("auth token")
+      ? "form"
+      : mode === "login"
+        ? "password"
+        : "email";
+
+    return { ok: false, message: result.message, field };
+  }
+
+  if (mode === "signup") {
+    const userId = String(result.data.user.id);
+    const username = result.data.user.username || getUsername(email);
+
+    await ensureAccountSettingsForUser(userId, username, username, {
+      ownerUsername: username,
+      email,
+    }).catch((error) => {
+      console.error("Could not create account profile", error);
+    });
   }
 
   const cookieStore = await cookies();

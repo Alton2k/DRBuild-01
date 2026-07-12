@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toggleFollowUserAction } from "@/app/actions";
+import { formatUserHandle } from "@/lib/userHandles";
 
 type ProfileHeaderClientProps = {
   initialDisplayName: string;
+  initialUserName?: string;
   initialEmail?: string;
   initialAvatarUrl: string;
   initialBio: string;
@@ -20,9 +22,8 @@ type ProfileHeaderClientProps = {
 };
 
 function getInitials(name: string, email?: string) {
-  const source = name || email || "DR";
+  const source = (name || email || "DR").replace(/^@+/, "");
   const words = source
-    .replace(/@.*/, "")
     .split(/[\s._-]+/)
     .filter(Boolean);
   const initials = words.length > 1 ? `${words[0][0]}${words[1][0]}` : source.slice(0, 2);
@@ -32,6 +33,7 @@ function getInitials(name: string, email?: string) {
 
 export default function ProfileHeaderClient({
   initialDisplayName,
+  initialUserName,
   initialEmail,
   initialAvatarUrl,
   initialBio,
@@ -52,7 +54,7 @@ export default function ProfileHeaderClient({
   }`;
   const avatarContent = initialAvatarUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={initialAvatarUrl} alt="" className="h-full w-full object-cover" />
+    <img src={initialAvatarUrl} alt="" width={112} height={112} className="h-full w-full object-cover" />
   ) : (
     getInitials(initialDisplayName, initialEmail)
   );
@@ -118,16 +120,24 @@ export default function ProfileHeaderClient({
           ) : (
             <div className={avatarClassName}>{avatarContent}</div>
           )}
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-start gap-1.5">
-              <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+              <h1 className="min-w-0 break-words text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
                 {initialDisplayName}
               </h1>
               <span className="profile-member-badge mt-0.5 inline-flex items-center rounded border px-1.5 py-0.5 text-[0.55rem] font-black uppercase tracking-[0.12em]">
                 Member
               </span>
             </div>
-            <p className="mt-1 max-w-xl truncate text-sm font-medium leading-6 text-slate-600">
+            <p className="mt-1 max-w-xl break-words text-sm font-medium leading-6 text-slate-600">
+              {initialUserName ? (
+                <>
+                  {formatUserHandle(initialUserName)}
+                  <span className="px-1.5" aria-hidden="true">
+                    |
+                  </span>
+                </>
+              ) : null}
               {joinedDate ? `Joined ${joinedDate}` : "Member profile"}
               {showActions && initialBio ? (
                 <>
@@ -142,7 +152,7 @@ export default function ProfileHeaderClient({
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Link
                 href="/settings#profile"
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-transparent px-3 text-[0.7rem] font-bold text-slate-600 transition hover:!border-[#dc115e] hover:!bg-[#dc115e] hover:!text-white focus-visible:!border-[#dc115e] focus-visible:!bg-[#dc115e] focus-visible:!text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+                className="profile-compact-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-transparent px-3 text-[0.7rem] font-bold text-slate-600 transition hover:!border-[#dc115e] hover:!bg-[#dc115e] hover:!text-white focus-visible:!border-[#dc115e] focus-visible:!bg-[#dc115e] focus-visible:!text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
               >
                 <svg
                   aria-hidden="true"
@@ -161,7 +171,7 @@ export default function ProfileHeaderClient({
               </Link>
               <Link
                 href="/settings"
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-transparent px-3 text-[0.7rem] font-bold text-slate-600 transition hover:!border-[#dc115e] hover:!bg-[#dc115e] hover:!text-white focus-visible:!border-[#dc115e] focus-visible:!bg-[#dc115e] focus-visible:!text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
+                className="profile-compact-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-transparent px-3 text-[0.7rem] font-bold text-slate-600 transition hover:!border-[#dc115e] hover:!bg-[#dc115e] hover:!text-white focus-visible:!border-[#dc115e] focus-visible:!bg-[#dc115e] focus-visible:!text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20"
               >
                 <svg
                   aria-hidden="true"
@@ -181,7 +191,7 @@ export default function ProfileHeaderClient({
             </div>
             ) : null}
             {!showActions && initialBio ? (
-              <p className="mt-3 max-w-xl text-sm font-medium leading-6 text-slate-600">
+              <p className="mt-3 max-w-xl break-words text-sm font-medium leading-6 text-slate-600">
                 {initialBio}
               </p>
             ) : null}
@@ -191,7 +201,7 @@ export default function ProfileHeaderClient({
                   type="button"
                   disabled={followDisabled}
                   onClick={handleFollowClick}
-                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#dc115e] bg-[#dc115e] px-3 text-[0.7rem] font-bold text-white transition hover:!bg-[#c70f55] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="profile-compact-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#dc115e] bg-[#dc115e] px-3 text-[0.7rem] font-bold text-white transition hover:!bg-[#c70f55] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isFollowing ? "Following" : "Follow"}
                 </button>

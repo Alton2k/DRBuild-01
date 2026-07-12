@@ -150,6 +150,37 @@ export async function getFollowedUserIdsForUser(userId: string) {
   return followedUserIds;
 }
 
+export async function getFollowerUserIdsForUser(userId: string) {
+  const followerUserIds = new Set<string>();
+  const pageSize = 100;
+  let page = 1;
+  let pageCount = 1;
+
+  do {
+    const query = new URLSearchParams({
+      "filters[followingUserId][$eq]": userId,
+      "fields[0]": "followerUserId",
+      sort: "createdAt:desc",
+      "pagination[page]": String(page),
+      "pagination[pageSize]": String(pageSize),
+    });
+    const response = await strapiRequest<StrapiListResponse<StrapiFollow>>("/api/follows", {
+      query,
+      requireToken: true,
+    }).catch(() => null);
+
+    if (!response) return followerUserIds;
+    for (const entity of response.data) {
+      const fields = getStrapiEntityFields(entity);
+      if (fields.followerUserId) followerUserIds.add(fields.followerUserId);
+    }
+    pageCount = response.meta?.pagination?.pageCount ?? 1;
+    page += 1;
+  } while (page <= pageCount);
+
+  return followerUserIds;
+}
+
 export async function followUser(followerUserId: string, followingUserId: string) {
   if (!followerUserId || !followingUserId || followerUserId === followingUserId) {
     return false;

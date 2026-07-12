@@ -3,7 +3,7 @@ import InfoPage from "../infoPage";
 
 export const metadata: Metadata = {
   title: "Community Rules - Deal Rakyat",
-  description: "Draft community rules for Deal Rakyat users.",
+  description: "Community rules for Deal Rakyat users.",
 };
 
 export default function CommunityRulesPage() {
@@ -11,7 +11,7 @@ export default function CommunityRulesPage() {
     <InfoPage
       eyebrow="Community"
       title="Community Rules"
-      intro="These draft rules explain how users should submit deals, discuss offers, report problems, and keep Deal Rakyat useful for Malaysian shoppers."
+      intro="These rules explain how users should submit deals, discuss offers, report problems, and keep Deal Rakyat useful for Malaysian shoppers."
       sections={[
         {
           title: "Post real, useful deals",
@@ -37,7 +37,7 @@ export default function CommunityRulesPage() {
         {
           title: "Report bad deals",
           body: [
-            "Use reporting tools or the contact placeholders to flag expired deals, wrong prices, suspicious merchants, counterfeit concerns, unsafe products, broken links, scams, or content that should be reviewed.",
+            "Use the deal and comment reporting tools to flag expired offers, wrong prices, suspicious merchants, counterfeit concerns, unsafe products, broken links, scams, abuse, or other content that needs moderator review.",
             "Reports should be accurate and made in good faith. Reporting a deal only because you dislike a brand, store, or user may be treated as misuse.",
           ],
         },
@@ -45,7 +45,7 @@ export default function CommunityRulesPage() {
           title: "Moderation actions",
           body: [
             "Moderators may edit titles, correct prices, add expiry information, merge duplicates, remove unsafe links, reject posts, hide comments, expire deals, or suspend accounts.",
-            "Moderation decisions are intended to protect the community and keep deal discovery useful. Users may contact Deal Rakyat if they believe a moderation decision should be reviewed.",
+            "Moderation decisions are intended to protect the community and keep deal discovery useful. Users may email support@dealrakyat.my if they believe a moderation decision should be reviewed.",
           ],
         },
       ]}

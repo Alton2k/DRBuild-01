@@ -2,8 +2,12 @@ export const profileSettingsStorageKey = "dealmy_profile_settings";
 export const profileSettingsChangedEventName = "dealmy:profile-settings-changed";
 export const togglesStorageKey = "dealmy_settings_toggles";
 export const defaultProfileBio = "";
-export const profileUserNameMinLength = 5;
-export const profileUserNameLimit = 80;
+export const usernameMinLength = 3;
+export const usernameLimit = 24;
+export const displayNameLimit = 48;
+export const profileUserNameMinLength = usernameMinLength;
+export const profileUserNameLimit = usernameLimit;
+export const profileDisplayNameLimit = displayNameLimit;
 export const profileBioLimit = 72;
 
 export type SettingsTheme = "dark" | "light" | "system";
@@ -24,6 +28,7 @@ export type ToggleKey =
 
 export type StoredProfileSettings = {
   avatarUrl: string;
+  displayName: string;
   userName: string;
   bio: string;
 };
@@ -49,11 +54,12 @@ export const defaultToggles: Record<ToggleKey, boolean> = {
   allowFollowers: true,
 };
 
-export function createDefaultAccountSettings(displayName = ""): AccountSettings {
+export function createDefaultAccountSettings(displayName = "", userName = displayName): AccountSettings {
   return {
     profile: {
       avatarUrl: "",
-      userName: displayName,
+      displayName,
+      userName,
       bio: defaultProfileBio,
     },
     theme: "system",
@@ -71,6 +77,7 @@ export function parseStoredProfileSettings(value: string | null): StoredProfileS
 
     return {
       avatarUrl: typeof parsed.avatarUrl === "string" ? parsed.avatarUrl : "",
+      displayName: typeof parsed.displayName === "string" ? parsed.displayName : "",
       userName: typeof parsed.userName === "string" ? parsed.userName : "",
       bio: typeof parsed.bio === "string" ? parsed.bio : "",
     };

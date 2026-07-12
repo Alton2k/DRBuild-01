@@ -1,17 +1,19 @@
 import "server-only";
 
 import type { DealStatus } from "./deals";
+export { validateCommentBody } from "./commentValidation";
 
 export const allowedReportReasons = ["expired", "bad-price", "bad-link", "spam"] as const;
+export const allowedCommentReportReasons = ["spam", "harassment", "misinformation", "unsafe", "other"] as const;
 export type ReportReason = (typeof allowedReportReasons)[number];
+export type CommentReportReason = (typeof allowedCommentReportReasons)[number];
 
 export const allowedModerationStatuses = ["pending", "approved", "rejected"] as const;
 
 const allowedReportReasonSet = new Set<string>(allowedReportReasons);
+const allowedCommentReportReasonSet = new Set<string>(allowedCommentReportReasons);
 const allowedModerationStatusSet = new Set<string>(allowedModerationStatuses);
 const actionIdPattern = /^[a-zA-Z0-9_-]{1,128}$/;
-const commentMinLength = 3;
-const commentMaxLength = 1000;
 
 export function getString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -28,6 +30,10 @@ export function isVoteDirection(value: unknown): value is "up" | "down" {
 
 export function isReportReason(value: string): value is ReportReason {
   return allowedReportReasonSet.has(value);
+}
+
+export function isCommentReportReason(value: string): value is CommentReportReason {
+  return allowedCommentReportReasonSet.has(value);
 }
 
 export function isDealStatus(value: string): value is DealStatus {
@@ -60,38 +66,4 @@ export function parseFutureExpiration(value: string) {
   }
 
   return { expiresAt: parsed.toISOString(), error: "" };
-}
-
-export function validateCommentBody(value: string) {
-  const body = value.trim();
-  const compactBody = body.replace(/\s+/g, "").toLowerCase();
-
-  if (body.length < commentMinLength) {
-    return {
-      ok: false as const,
-      message: "Your comment is too short.",
-      body,
-    };
-  }
-
-  if (body.length > commentMaxLength) {
-    return {
-      ok: false as const,
-      message: "Your comment is too long.",
-      body,
-    };
-  }
-
-  if (compactBody.length >= 8 && new Set(compactBody).size <= 2) {
-    return {
-      ok: false as const,
-      message: "Please write a more detailed comment.",
-      body,
-    };
-  }
-
-  return {
-    ok: true as const,
-    body,
-  };
 }

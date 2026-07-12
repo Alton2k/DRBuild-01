@@ -117,7 +117,7 @@ export default function ShareDealButton({
       <span
         role="status"
         aria-live="polite"
-        className="sr-only"
+        className={status === "idle" ? "sr-only" : `mobile-safe-toast theme-alert pointer-events-none fixed bottom-4 left-1/2 z-[80] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 px-4 py-3 text-center text-sm font-semibold shadow-lg ${status === "error" ? "theme-alert-warning" : "theme-alert-success"}`}
       >
         {statusLabel}
       </span>

@@ -4,6 +4,8 @@ import type { ImgHTMLAttributes } from "react";
 type UserImageProps = ImgHTMLAttributes<HTMLImageElement> & {
   src: string;
   alt: string;
+  width: number;
+  height: number;
 };
 
 /**

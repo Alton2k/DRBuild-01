@@ -16,6 +16,7 @@ import ShareDealButton from "@/components/ShareDealButton";
 import UserImage from "@/components/UserImage";
 import { getCurrentUser } from "@/lib/auth";
 import { getCommentsForDealResult } from "@/lib/comments";
+import { isCommentOwnedBy } from "@/lib/commentOwnership";
 import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
 import { getDealByIdResult, getDealVoteDirection, type Deal } from "@/lib/deals";
 import { getDealDiscountPercent, getDealSavingsAmount } from "@/lib/dealDisplay";
@@ -24,6 +25,7 @@ import { formatMyrPrice } from "@/lib/formatters";
 import { getSavedDealIdsForUser } from "@/lib/savedDeals";
 import { getAbsoluteUrl, siteDescription, siteName } from "@/lib/site";
 import { getAccountSettingsByUserIds } from "@/lib/userSettings";
+import { getUserProfilePath } from "@/lib/userHandles";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,7 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-MY", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Asia/Kuala_Lumpur",
   }).format(new Date(value));
 }
 
@@ -56,6 +59,7 @@ function getUserDisplayName(user: Awaited<ReturnType<typeof getCurrentUser>>) {
 function getAuthorInitials(name: string) {
   const initials = name
     .trim()
+    .replace(/^@+/, "")
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
@@ -101,7 +105,7 @@ function truncateText(value: string, maxLength: number) {
     return value;
   }
 
-  return `${value.slice(0, maxLength - 1).trimEnd()}...`;
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function getDealPreviewDescription(deal: Deal) {
@@ -208,8 +212,9 @@ export default async function DealDetailPage({
             Deal temporarily unavailable
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-700">
-            Please try again later.
+            Check your connection, then try loading this deal again.
           </p>
+          <a href={`/deal/${id}`} className="post-primary-button mt-5 inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-bold">Try again</a>
         </div>
       </main>
     );
@@ -242,28 +247,32 @@ export default async function DealDetailPage({
   ]).catch(() => new Map());
   const dealAuthorProfile = deal.authorUserId ? publicAuthorSettings.get(deal.authorUserId)?.profile : null;
   const dealAuthorToggles = deal.authorUserId ? publicAuthorSettings.get(deal.authorUserId)?.toggles : null;
-  const dealAuthorName = dealAuthorProfile?.userName || deal.authorName || deal.authorEmail || "Community member";
+  const dealAuthorName = dealAuthorProfile?.displayName
+    ? dealAuthorProfile.displayName
+    : deal.authorName || deal.authorEmail || "Community member";
   const dealAuthorAvatarUrl = dealAuthorProfile?.avatarUrl ?? "";
   const dealAuthorProfileHref =
     deal.authorUserId && user?.id === deal.authorUserId
       ? "/profile"
       : deal.authorUserId && (dealAuthorToggles?.publicProfile ?? true)
-        ? `/profile/${encodeURIComponent(dealAuthorName)}`
+        ? getUserProfilePath(deal.authorUserId, dealAuthorProfile?.userName)
         : "";
   const threadComments: ThreadComment[] = comments.map(({ authorViewerId, authorUserId, likedBy, ...comment }) => ({
     ...comment,
-    authorName: authorUserId ? publicAuthorSettings.get(authorUserId)?.profile.userName || comment.authorName : comment.authorName,
+    authorName: authorUserId && publicAuthorSettings.get(authorUserId)?.profile.displayName
+      ? publicAuthorSettings.get(authorUserId)?.profile.displayName ?? ""
+      : comment.authorName,
     authorAvatarUrl: authorUserId ? publicAuthorSettings.get(authorUserId)?.profile.avatarUrl ?? "" : "",
     authorProfileHref:
       authorUserId && user?.id === authorUserId
         ? "/profile"
         : authorUserId && (publicAuthorSettings.get(authorUserId)?.toggles.publicProfile ?? true)
-          ? `/profile/${encodeURIComponent(publicAuthorSettings.get(authorUserId)?.profile.userName || comment.authorName)}`
+          ? getUserProfilePath(authorUserId, publicAuthorSettings.get(authorUserId)?.profile.userName)
           : "",
     viewerHasLiked: viewerId ? likedBy.includes(viewerId) : false,
-    canDelete: Boolean(
-      (viewerId && authorViewerId === viewerId) ||
-      (user && authorUserId === user.id),
+    canDelete: isCommentOwnedBy(
+      { authorViewerId, authorUserId },
+      { viewerId, authorUserId: user?.id },
     ),
   }));
   const categoryHref = getCategoryHref(deal.category);
@@ -370,7 +379,7 @@ export default async function DealDetailPage({
                       >
                         <span className="deal-detail-author-avatar flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-black">
                           {dealAuthorAvatarUrl ? (
-                            <UserImage src={dealAuthorAvatarUrl} alt="" className="h-full w-full object-cover" />
+                            <UserImage src={dealAuthorAvatarUrl} alt="" width={28} height={28} className="h-full w-full object-cover" />
                           ) : (
                             getAuthorInitials(dealAuthorName)
                           )}
@@ -422,7 +431,7 @@ export default async function DealDetailPage({
                 initialVote={viewerDealVote}
                 voteStorageScope={dealVoteViewerId}
                 disabled={deal.isExpired}
-                buttonClassName="inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:h-5 [&_svg]:w-5"
+                buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:h-5 [&_svg]:w-5"
                 containerClassName="inline-flex items-center gap-1 rounded-full border-0 bg-transparent p-0 shadow-none"
                 scoreClassName="min-w-8 text-center text-base font-bold tabular-nums"
               />
@@ -453,19 +462,19 @@ export default async function DealDetailPage({
                 initialSaved={savedDealIds.has(deal.id)}
                 isSignedIn={Boolean(user)}
                 disabled={deal.isExpired}
-                className="home-deal-card-icon-action ml-1 inline-flex h-9 w-9 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-5 [&_svg]:w-5"
+                className="home-deal-card-icon-action ml-1 inline-flex h-10 w-10 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-5 [&_svg]:w-5"
               />
               <ShareDealButton
                 title={deal.title}
                 href={dealHref}
                 text={`Check out this deal on Deal Rakyat: ${deal.title}`}
                 disabled={deal.isExpired}
-                className="home-deal-card-icon-action inline-flex h-9 w-9 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-5 [&_svg]:w-5"
+                className="home-deal-card-icon-action inline-flex h-10 w-10 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-5 [&_svg]:w-5"
               />
               <CloseOnOutsideDetails className="deal-detail-more-menu relative inline-flex">
                 <summary
                   aria-label="More deal actions"
-                  className="home-deal-card-icon-action inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-5 [&_svg]:w-5"
+                  className="home-deal-card-icon-action inline-flex h-10 w-10 cursor-pointer list-none items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 [&_svg]:h-5 [&_svg]:w-5"
                 >
                   <EllipsisIcon />
                 </summary>
