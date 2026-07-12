@@ -3,14 +3,23 @@ import type { Core } from '@strapi/strapi';
 const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Plugin => {
   const endpoint = env('R2_ENDPOINT', '').replace(/\/+$/, '');
   const publicUrl = env('R2_PUBLIC_URL', '').replace(/\/+$/, '');
+  const security = {
+    allowedTypes: ['image/*'],
+    deniedTypes: ['image/svg+xml'],
+  };
 
   if (!endpoint) {
-    return {};
+    return {
+      upload: {
+        config: { security },
+      },
+    };
   }
 
   return {
     upload: {
       config: {
+        security,
         provider: 'aws-s3',
         providerOptions: {
           baseUrl: publicUrl || undefined,
