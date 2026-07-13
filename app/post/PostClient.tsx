@@ -2776,6 +2776,11 @@ export default function PostClient({
                 <input type="hidden" name="imageUrl" value={form.imageUrl} />
                 <input type="hidden" name="uploadedImageUrl" value={form.uploadedImageUrl} />
                 <input type="hidden" name="imageGalleryUrls" value={JSON.stringify(submittedGalleryUrls)} />
+                <input
+                  type="hidden"
+                  name="imageFileNames"
+                  value={JSON.stringify([form.imageName, ...form.optionalImageNames].slice(0, maxGalleryImages))}
+                />
               </form>
             ) : null}
 

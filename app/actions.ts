@@ -8,6 +8,7 @@ import {
   findDuplicateDeal,
   getAuthorDealModerationStats,
   getDealById,
+  getDealUploadedMediaFiles,
   hasDealReportForViewer,
   markDealExpired,
   reportDeal,
@@ -58,6 +59,12 @@ import {
   validateCommentBody,
 } from "@/lib/serverActionValidation";
 import type { DealActionState } from "./dealActionState";
+import {
+  deleteUploadedDealMedia,
+  getDealMediaUploadMessage,
+  prepareDealMediaUrls,
+} from "@/lib/dealMedia";
+import { getDealMediaChanges } from "@/lib/dealImageData";
 
 export type VoteDirection = "up" | "down";
 
@@ -149,7 +156,7 @@ function normalizeOptionalImageUrl(value: string, baseUrl: string) {
     return "";
   }
 
-  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=]+$/i.test(value)) {
+  if (/^data:image\/(png|jpeg|jpg|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(value)) {
     return value.length <= 1_500_000 ? value : "";
   }
 
@@ -163,6 +170,25 @@ function normalizeOptionalImageUrl(value: string, baseUrl: string) {
       : "";
   } catch {
     return "";
+  }
+}
+
+function normalizeImageFileNames(value: string) {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => (typeof item === "string" ? item.trim().slice(0, 160) : ""))
+      .slice(0, maxDealGalleryImages);
+  } catch {
+    return [];
   }
 }
 
@@ -360,6 +386,7 @@ export async function createDealAction(
   const rawImageUrl = getString(formData, "imageUrl");
   const rawUploadedImageUrl = getString(formData, "uploadedImageUrl");
   const rawImageGalleryUrls = getString(formData, "imageGalleryUrls");
+  const rawImageFileNames = getString(formData, "imageFileNames");
 
   const errors: DealActionState["errors"] = {};
   const price = parsePositiveNumber(priceValue);
@@ -419,9 +446,22 @@ export async function createDealAction(
   }
 
   const normalizedUrl = urlValidation?.ok ? urlValidation.url : url;
-  const imageGalleryUrls = normalizeImageGalleryUrls(rawImageGalleryUrls, normalizedUrl);
-  const uploadedImageUrl = imageGalleryUrls[0] ?? normalizeOptionalImageUrl(rawUploadedImageUrl, normalizedUrl);
-  const imageUrl = uploadedImageUrl || normalizeOptionalImageUrl(rawImageUrl, normalizedUrl);
+  const normalizedImageGalleryUrls = normalizeImageGalleryUrls(rawImageGalleryUrls, normalizedUrl);
+  const fallbackUploadedImageUrl = normalizeOptionalImageUrl(rawUploadedImageUrl, normalizedUrl);
+  const fallbackImageUrl = normalizeOptionalImageUrl(rawImageUrl, normalizedUrl);
+  const pendingImageGalleryUrls = normalizedImageGalleryUrls.length > 0
+    ? normalizedImageGalleryUrls
+    : fallbackUploadedImageUrl
+      ? [fallbackUploadedImageUrl]
+      : [];
+  const pendingPrimaryImageUrl = pendingImageGalleryUrls[0] || fallbackImageUrl;
+  if (!pendingPrimaryImageUrl) {
+    return {
+      ok: false,
+      message: "Please add a valid product photo.",
+      errors: { imageName: "Add a valid product photo." },
+    };
+  }
   const duplicateMatch = await findDuplicateDeal({ title, url: normalizedUrl, store });
   const automatedSignals = getAutomatedModerationSignals({
     title,
@@ -430,7 +470,7 @@ export async function createDealAction(
     category,
     subCategory,
     url: normalizedUrl,
-    hasImage: Boolean(imageUrl || uploadedImageUrl || imageGalleryUrls.length > 0),
+    hasImage: true,
   });
   const moderation = await getInitialDealModeration({
     authorUserId: user.id,
@@ -438,6 +478,25 @@ export async function createDealAction(
     hasDuplicateWarning: Boolean(duplicateMatch),
     automatedSignals,
   });
+
+  let preparedMedia;
+  try {
+    preparedMedia = await prepareDealMediaUrls(
+      pendingImageGalleryUrls,
+      normalizeImageFileNames(rawImageFileNames),
+    );
+  } catch (error) {
+    console.error("Could not upload deal images", error);
+    return {
+      ok: false,
+      message: getDealMediaUploadMessage(error),
+      errors: { imageName: getDealMediaUploadMessage(error) },
+    };
+  }
+
+  const imageGalleryUrls = preparedMedia.urls;
+  const uploadedImageUrl = imageGalleryUrls[0] ?? "";
+  const imageUrl = uploadedImageUrl || fallbackImageUrl;
 
   let deal;
   try {
@@ -456,6 +515,7 @@ export async function createDealAction(
       imageUrl,
       uploadedImageUrl,
       imageGalleryUrls,
+      uploadedMediaFiles: preparedMedia.uploadedFiles,
       status: moderation.status,
       moderationReason: moderation.reason,
       duplicateOfDealId: duplicateMatch?.deal.id,
@@ -469,6 +529,7 @@ export async function createDealAction(
         "community",
     });
   } catch (error) {
+    await deleteUploadedDealMedia(preparedMedia.uploadedFiles.map((file) => file.id));
     console.error("Could not create deal", error);
     return {
       ok: false,
@@ -530,6 +591,7 @@ export async function updateOwnDealAction(
   const rawImageUrl = getString(formData, "imageUrl");
   const rawUploadedImageUrl = getString(formData, "uploadedImageUrl");
   const rawImageGalleryUrls = getString(formData, "imageGalleryUrls");
+  const rawImageFileNames = getString(formData, "imageFileNames");
   const errors: DealActionState["errors"] = {};
   const price = parsePositiveNumber(priceValue);
   const originalPrice = originalPriceValue ? parsePositiveNumber(originalPriceValue) : null;
@@ -557,9 +619,22 @@ export async function updateOwnDealAction(
   }
 
   const normalizedUrl = urlValidation?.ok ? urlValidation.url : url;
-  const imageGalleryUrls = normalizeImageGalleryUrls(rawImageGalleryUrls, normalizedUrl);
-  const uploadedImageUrl = imageGalleryUrls[0] ?? normalizeOptionalImageUrl(rawUploadedImageUrl, normalizedUrl);
-  const imageUrl = uploadedImageUrl || normalizeOptionalImageUrl(rawImageUrl, normalizedUrl);
+  const normalizedImageGalleryUrls = normalizeImageGalleryUrls(rawImageGalleryUrls, normalizedUrl);
+  const fallbackUploadedImageUrl = normalizeOptionalImageUrl(rawUploadedImageUrl, normalizedUrl);
+  const fallbackImageUrl = normalizeOptionalImageUrl(rawImageUrl, normalizedUrl);
+  const pendingImageGalleryUrls = normalizedImageGalleryUrls.length > 0
+    ? normalizedImageGalleryUrls
+    : fallbackUploadedImageUrl
+      ? [fallbackUploadedImageUrl]
+      : [];
+  const pendingPrimaryImageUrl = pendingImageGalleryUrls[0] || fallbackImageUrl;
+  if (!pendingPrimaryImageUrl) {
+    return {
+      ok: false,
+      message: "Please add a valid product photo.",
+      errors: { imageName: "Add a valid product photo." },
+    };
+  }
   const duplicateMatch = await findDuplicateDeal({ title, url: normalizedUrl, store, excludeDealId: dealId });
   const automatedSignals = getAutomatedModerationSignals({
     title,
@@ -568,7 +643,7 @@ export async function updateOwnDealAction(
     category,
     subCategory,
     url: normalizedUrl,
-    hasImage: Boolean(imageUrl || uploadedImageUrl || imageGalleryUrls.length > 0),
+    hasImage: true,
   });
   const isAdmin = isAdminUser(user);
   const nextStatus: DealStatus = isAdmin ? existingDeal.status : "pending";
@@ -579,6 +654,38 @@ export async function updateOwnDealAction(
       : automatedSignals.length > 0
         ? `owner_edit_${getPrimaryModerationSignal(automatedSignals)}`
         : "owner_edit_manual_review";
+
+  let existingMediaFiles;
+  try {
+    existingMediaFiles = await getDealUploadedMediaFiles(dealId);
+  } catch (error) {
+    console.error("Could not read deal media metadata", error);
+    return { ok: false, message: "Could not prepare this deal for editing. Please try again." };
+  }
+
+  let preparedMedia;
+  try {
+    preparedMedia = await prepareDealMediaUrls(
+      pendingImageGalleryUrls,
+      normalizeImageFileNames(rawImageFileNames),
+    );
+  } catch (error) {
+    console.error("Could not upload deal images", error);
+    return {
+      ok: false,
+      message: getDealMediaUploadMessage(error),
+      errors: { imageName: getDealMediaUploadMessage(error) },
+    };
+  }
+
+  const imageGalleryUrls = preparedMedia.urls;
+  const uploadedImageUrl = imageGalleryUrls[0] ?? "";
+  const imageUrl = uploadedImageUrl || fallbackImageUrl;
+  const mediaChanges = getDealMediaChanges(
+    existingMediaFiles,
+    imageGalleryUrls,
+    preparedMedia.uploadedFiles,
+  );
 
   try {
     const updatedDeal = await updateOwnDeal(dealId, user.id, {
@@ -595,6 +702,7 @@ export async function updateOwnDealAction(
       imageUrl,
       uploadedImageUrl,
       imageGalleryUrls,
+      uploadedMediaFiles: mediaChanges.storedFiles,
       expiredAt: expiration.expiresAt,
       status: nextStatus,
       moderationReason,
@@ -603,8 +711,11 @@ export async function updateOwnDealAction(
     });
 
     if (!updatedDeal) {
+      await deleteUploadedDealMedia(preparedMedia.uploadedFiles.map((file) => file.id));
       return { ok: false, message: "Only the deal owner can edit this submission." };
     }
+
+    await deleteUploadedDealMedia(mediaChanges.removedFileIds);
 
     revalidatePath("/");
     revalidatePath("/admin");
@@ -621,6 +732,7 @@ export async function updateOwnDealAction(
       dealStatus: nextStatus,
     };
   } catch (error) {
+    await deleteUploadedDealMedia(preparedMedia.uploadedFiles.map((file) => file.id));
     console.error("Could not update deal", error);
     return { ok: false, message: "Could not save this deal right now. Please try again." };
   }
@@ -910,7 +1022,9 @@ export async function deleteDealAction(id: string) {
     throw new Error("Invalid deal id.");
   }
 
+  const uploadedMediaFiles = await getDealUploadedMediaFiles(id);
   await deleteDeal(id);
+  await deleteUploadedDealMedia(uploadedMediaFiles.map((file) => file.id));
   revalidatePath("/");
   revalidatePath("/admin");
 }

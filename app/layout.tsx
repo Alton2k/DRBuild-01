@@ -136,8 +136,6 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full antialiased" data-ambient="on" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/favicon.ico?v=2" sizes="32x32" type="image/x-icon" />
-        <link rel="shortcut icon" href="/favicon.ico?v=2" type="image/x-icon" />
         <script dangerouslySetInnerHTML={{ __html: createThemeScript(initialThemeMode) }} />
       </head>
       <body className={`${openSans.variable} ${roboto.variable} ${firaCode.variable} min-h-full flex flex-col`}>

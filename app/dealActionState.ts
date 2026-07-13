@@ -9,6 +9,7 @@ export type DealFormField =
   | "subCategory"
   | "expiresAt"
   | "description"
+  | "imageName"
   | "imageUrl";
 
 export interface DealActionState {

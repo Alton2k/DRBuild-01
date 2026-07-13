@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getStrapiUrl } from "@/lib/strapi";
+import { getStrapiAccessHeaders, getStrapiUrl } from "@/lib/strapi";
 import { strapiAuthCookieName } from "@/lib/auth";
 import { ensureAccountSettingsForUser } from "@/lib/userSettings";
 
@@ -63,6 +63,7 @@ async function strapiAuthRequest(mode: AuthMode, email: string, password: string
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...getStrapiAccessHeaders(),
       },
       body: JSON.stringify(body),
       cache: "no-store",

@@ -9,6 +9,7 @@ import {
   type StrapiSingleResponse,
 } from "./strapi";
 import { dataFetchErrorResult, logDataFetchError, type DataResult } from "./dataResult";
+import type { StoredDealMediaFile } from "./dealImageData";
 
 export type DealStatus = "pending" | "approved" | "rejected";
 export type DealVoteDirection = "up" | "down";
@@ -61,6 +62,7 @@ export interface NewDealInput {
   imageUrl?: string;
   uploadedImageUrl?: string;
   imageGalleryUrls?: string[];
+  uploadedMediaFiles?: StoredDealMediaFile[];
   expiredAt?: string | null;
   status?: DealStatus;
   moderationReason?: string;
@@ -642,6 +644,7 @@ export async function createDeal(input: NewDealInput): Promise<Deal> {
     imageUrl: input.imageUrl ?? "",
     uploadedImageUrl: input.uploadedImageUrl ?? "",
     imageGalleryUrls: input.imageGalleryUrls ?? [],
+    uploadedMediaFiles: input.uploadedMediaFiles ?? [],
     expiredAt: input.expiredAt ?? null,
     score: 0,
     commentCount: 0,
@@ -719,6 +722,7 @@ export async function updateOwnDeal(
         imageUrl: input.imageUrl ?? "",
         uploadedImageUrl: input.uploadedImageUrl ?? "",
         imageGalleryUrls: input.imageGalleryUrls ?? [],
+        uploadedMediaFiles: input.uploadedMediaFiles ?? [],
         expiredAt: input.expiredAt ?? null,
         isExpired: input.expiredAt ? isDealExpiredByDate(input.expiredAt) : false,
         moderationStatus: input.status ?? "pending",
@@ -730,6 +734,30 @@ export async function updateOwnDeal(
   });
 
   return response.data ? toDeal(response.data) : null;
+}
+
+export async function getDealUploadedMediaFiles(id: string): Promise<StoredDealMediaFile[]> {
+  const query = new URLSearchParams();
+  query.append("fields[0]", "uploadedMediaFiles");
+  const response = await strapiRequest<StrapiSingleResponse<{ uploadedMediaFiles?: unknown }>>(
+    `/api/deals/${id}`,
+    { query, requireToken: true },
+  );
+  const value = response.data ? getStrapiEntityFields(response.data).uploadedMediaFiles : null;
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const idValue = Number("id" in item ? item.id : NaN);
+    const urlValue = "url" in item && typeof item.url === "string" ? item.url : "";
+    return Number.isSafeInteger(idValue) && idValue > 0 && /^https?:\/\//i.test(urlValue)
+      ? [{ id: idValue, url: urlValue }]
+      : [];
+  });
 }
 
 export async function updateDealStatus(id: string, status: DealStatus, moderationReason = "admin_manual_update") {

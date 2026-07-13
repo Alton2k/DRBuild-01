@@ -53,6 +53,24 @@ export function getStrapiToken() {
   return process.env.STRAPI_API_TOKEN ?? "";
 }
 
+export function getStrapiAccessHeaders(): Record<string, string> {
+  const clientId = process.env.CF_ACCESS_CLIENT_ID?.trim() ?? "";
+  const clientSecret = process.env.CF_ACCESS_CLIENT_SECRET?.trim() ?? "";
+
+  if (!clientId && !clientSecret) {
+    return {};
+  }
+
+  if (!clientId || !clientSecret) {
+    throw new Error("Both CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be configured together.");
+  }
+
+  return {
+    "CF-Access-Client-Id": clientId,
+    "CF-Access-Client-Secret": clientSecret,
+  };
+}
+
 export function getStrapiEntityFields<T extends object>(entity: StrapiEntity<T>): T {
   return entity.attributes ?? entity;
 }
@@ -73,6 +91,7 @@ export async function strapiRequest<T>(path: string, options: StrapiRequestOptio
   const token = getStrapiToken();
   const headers: HeadersInit = {
     Accept: "application/json",
+    ...getStrapiAccessHeaders(),
   };
 
   if (token) {

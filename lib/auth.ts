@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
-import { getStrapiToken, getStrapiUrl } from "./strapi";
+import { getStrapiAccessHeaders, getStrapiToken, getStrapiUrl } from "./strapi";
 
 export const strapiAuthCookieName = "dealmy_strapi_jwt";
 
@@ -40,6 +40,7 @@ export async function getCurrentUser(): Promise<AppUser | null> {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${jwt}`,
+        ...getStrapiAccessHeaders(),
       },
       cache: "no-store",
     });
@@ -92,6 +93,7 @@ export async function getPublicUserById(userId: string) {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
+        ...getStrapiAccessHeaders(),
       },
       cache: "no-store",
     });
@@ -128,6 +130,7 @@ export async function getPublicUserByUsername(username: string) {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
+        ...getStrapiAccessHeaders(),
       },
       cache: "no-store",
     });

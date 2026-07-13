@@ -181,6 +181,8 @@ Template:
 ```env
 STRAPI_URL=http://127.0.0.1:1337
 STRAPI_API_TOKEN=paste_your_strapi_api_token_here
+CF_ACCESS_CLIENT_ID=
+CF_ACCESS_CLIENT_SECRET=
 ADMIN_EMAILS=local@example.com
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 SITE_ACCESS_PIN=
@@ -191,6 +193,7 @@ Notes:
 
 - `STRAPI_URL` points the Next.js frontend to Strapi.
 - `STRAPI_API_TOKEN` must be created in Strapi Admin.
+- `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` are an optional Cloudflare Access service-token pair for server-to-server Strapi requests. Configure both or neither, keep them unprefixed and server-only, and never expose them to browser code.
 - `ADMIN_EMAILS` is the website user email allowed to open `/admin`.
 - `ADMIN_EMAILS` is not the Strapi admin email unless the same email is also used for the website login.
 - `NEXT_PUBLIC_SITE_URL` is used for canonical and sitemap URLs. Set it to the deployed frontend origin in production.
@@ -789,13 +792,15 @@ Set these Vercel variables:
 ```text
 STRAPI_URL=https://<temporary-strapi-domain>.up.railway.app
 STRAPI_API_TOKEN=<production Strapi API token>
+CF_ACCESS_CLIENT_ID=<Cloudflare Access service-token client ID>
+CF_ACCESS_CLIENT_SECRET=<Cloudflare Access service-token client secret>
 ADMIN_EMAILS=<comma-separated website admin emails>
 NEXT_PUBLIC_SITE_URL=https://dealrakyat.my
 SITE_ACCESS_PIN=<unique random preview code, 12-128 characters>
 SITE_ACCESS_SECRET=<random value at least 32 characters long>
 ```
 
-`NEXT_PUBLIC_SITE_URL` is a build-time public variable, so redeploy the frontend after changing it. Keep `STRAPI_API_TOKEN` unprefixed so it is never included in browser bundles.
+`NEXT_PUBLIC_SITE_URL` is a build-time public variable, so redeploy the frontend after changing it. Keep `STRAPI_API_TOKEN`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET` unprefixed so they are never included in browser bundles. The Cloudflare pair must be configured together; leave both empty when the Strapi hostname is not protected by Access.
 
 While the site is under development, set both `SITE_ACCESS_PIN` and `SITE_ACCESS_SECRET` for the Production environment. The frontend then serves a JavaScript-free generic gate before any application page or asset, protects frontend API and health routes, issues a signed 15-minute HTTP-only cookie after a correct code, and sends restrictive cache, indexing, framing, referrer, and content-security headers. Redeploy after adding or removing these variables. Keep the Vercel frontend DNS records in Cloudflare set to **DNS only**; Cloudflare Access requires proxying and is not used in this architecture.
 
@@ -807,6 +812,10 @@ Add an R2 bucket CORS rule allowing `GET` from the production Strapi origin (`ht
 
 After deployment, upload, view, and delete a disposable image through Strapi Media Library. Confirm its stored URL starts with `https://media.dealrakyat.my/` and remains available after a Railway redeploy.
 
+Deal submissions upload user-selected product photos through the server-side Strapi `/api/upload` endpoint. Strapi stores the files in Media Library/R2, while the deal record stores the returned public URLs and a private `uploadedMediaFiles` cleanup list. The frontend API token must permit Upload `upload` and `destroy` actions in addition to the required Deal actions; the token is never sent to the browser. Deploy the Railway/Strapi service before the matching Vercel frontend so the optional `uploadedMediaFiles` deal field exists before submissions begin.
+
+When running the frontend against local Strapi, uploads use whichever provider is configured in `backend/.env`. Do not point local Strapi at the production database while leaving uploads on local disk: that creates shared media records whose files Railway cannot access. Either configure the same R2 variables locally for this temporary shared-data workflow or set the local frontend `STRAPI_URL` to `https://api.dealrakyat.my` so uploads pass through production Strapi/R2.
+
 ### 4. Domains and final linking
 
 Smoke-test the temporary Vercel and Railway domains before changing production DNS.
@@ -815,7 +824,7 @@ Smoke-test the temporary Vercel and Railway domains before changing production D
 2. Add `api.dealrakyat.my` to Railway. Add both the CNAME and TXT verification records Railway supplies. If Cloudflare proxying is enabled for this API hostname, use SSL/TLS mode **Full** as required by Railway.
 3. Connect `media.dealrakyat.my` from the R2 bucket's Custom Domains settings; let Cloudflare create its managed DNS record.
 4. Change Railway `PUBLIC_URL` to `https://api.dealrakyat.my`.
-5. Keep Vercel `STRAPI_URL` on the direct Railway-generated domain so server-side requests do not pass through Cloudflare. Keep Railway `PUBLIC_URL` on `https://api.dealrakyat.my`.
+5. Set Vercel `STRAPI_URL` to the proxied Strapi hostname. If that hostname is protected by Cloudflare Access, create a Service Auth policy for Vercel's service token and configure both `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`; all server-side Strapi reads, authentication calls, and media operations send those credentials. Keep Railway `PUBLIC_URL` on the same public Strapi hostname.
 6. Run `npm run db:check` against the production backend variables.
 7. Smoke-test `/`, `/auth`, `/post`, `/profile`, `/settings`, `/admin`, `/api/health`, one deal page, and the upload lifecycle.
 

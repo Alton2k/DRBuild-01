@@ -57,6 +57,9 @@
     "imageGalleryUrls": {
       "type": "json"
     },
+    "uploadedMediaFiles": {
+      "type": "json"
+    },
     "score": {
       "type": "integer",
       "default": 0
