@@ -5,27 +5,44 @@ import {
   SITE_ACCESS_COOKIE,
   verifySiteAccessToken,
 } from "./lib/siteAccess";
+import { getSiteAccessPageError, renderSiteAccessPage } from "./lib/siteAccessGate";
 
 const accessPagePath = "/site-access";
-const accessPageHeader = "x-deal-rakyat-site-access-page";
 
-function withPrivateSiteHeaders(response: NextResponse) {
+function withPrivateSiteHeaders(response: NextResponse, includeContentSecurityPolicy = false) {
   response.headers.set("Cache-Control", "private, no-store");
   response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  if (includeContentSecurityPolicy) {
+    response.headers.set(
+      "Content-Security-Policy",
+      "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    );
+  }
   return response;
 }
 
-function continueRequest(request: NextRequest, isAccessPage = false) {
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.delete(accessPageHeader);
-  if (isAccessPage) {
-    requestHeaders.set(accessPageHeader, "1");
-  }
-
+function continueRequest(request: NextRequest) {
   return withPrivateSiteHeaders(
     NextResponse.next({
-      request: { headers: requestHeaders },
+      request: { headers: new Headers(request.headers) },
     }),
+  );
+}
+
+function siteAccessPage(request: NextRequest, configured: boolean) {
+  const next = getSafeSiteAccessNext(request.nextUrl.searchParams.get("next"));
+  const error = getSiteAccessPageError(request.nextUrl.searchParams.get("error"));
+  return withPrivateSiteHeaders(
+    new NextResponse(renderSiteAccessPage({ next, error, configured }), {
+      status: configured ? 200 : 503,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    }),
+    true,
   );
 }
 
@@ -36,26 +53,39 @@ export async function proxy(request: NextRequest) {
   }
 
   const { pathname, search } = request.nextUrl;
-  if (pathname === accessPagePath) {
-    return continueRequest(request, true);
+  if (pathname === "/robots.txt") {
+    return continueRequest(request);
   }
 
-  if (pathname === "/api/health" || pathname === "/robots.txt") {
-    return continueRequest(request);
+  if (pathname === "/api/site-access") {
+    return NextResponse.next();
   }
 
   const token = request.cookies.get(SITE_ACCESS_COOKIE)?.value;
   if (settings.configured && (await verifySiteAccessToken(token, settings.secret))) {
+    if (pathname === accessPagePath) {
+      return withPrivateSiteHeaders(
+        NextResponse.redirect(new URL(getSafeSiteAccessNext(request.nextUrl.searchParams.get("next")), request.url)),
+      );
+    }
     return continueRequest(request);
+  }
+
+  if (pathname === accessPagePath) {
+    return siteAccessPage(request, settings.configured);
   }
 
   if (pathname.startsWith("/api/")) {
     return withPrivateSiteHeaders(
       NextResponse.json(
-        { error: { message: "Development access is required." } },
+        { error: { message: "Not found." } },
         { status: 401 },
       ),
     );
+  }
+
+  if (pathname.startsWith("/_next/") || pathname === "/favicon.ico") {
+    return withPrivateSiteHeaders(new NextResponse(null, { status: 404 }));
   }
 
   const accessUrl = new URL(accessPagePath, request.url);
@@ -64,7 +94,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|apple-icon.png|icon.svg|icon1.png|deal-rakyat-og.svg).*)",
-  ],
+  matcher: ["/:path*"],
 };

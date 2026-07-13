@@ -1,5 +1,7 @@
-export const SITE_ACCESS_COOKIE = "dealrakyat_site_access";
+export const SITE_ACCESS_COOKIE = "site_preview_access";
 export const SITE_ACCESS_SESSION_SECONDS = 15 * 60;
+export const SITE_ACCESS_MINIMUM_CODE_LENGTH = 12;
+export const SITE_ACCESS_MAXIMUM_CODE_LENGTH = 128;
 
 const minimumSecretLength = 32;
 const encoder = new TextEncoder();
@@ -13,6 +15,15 @@ export type SiteAccessSettings =
   | { enabled: false; configured: false; pin: ""; secret: "" }
   | { enabled: true; configured: false; pin: string; secret: string }
   | { enabled: true; configured: true; pin: string; secret: string };
+
+type SiteAccessRequestOrigin = {
+  fetchSite: string | null;
+  forwardedHost: string | null;
+  host: string | null;
+  origin: string | null;
+  referer: string | null;
+  urlHost: string;
+};
 
 function toHex(bytes: ArrayBuffer) {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -42,7 +53,7 @@ async function createSignature(secret: string, expiresAt: number) {
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
-    encoder.encode(`deal-rakyat-site-access:${expiresAt}`),
+    encoder.encode(`site-preview-access:${expiresAt}`),
   );
 
   return toHex(signature);
@@ -63,7 +74,10 @@ export function getSiteAccessSettings(
 
   return {
     enabled: true,
-    configured: secret.length >= minimumSecretLength,
+    configured:
+      pin.length >= SITE_ACCESS_MINIMUM_CODE_LENGTH
+      && pin.length <= SITE_ACCESS_MAXIMUM_CODE_LENGTH
+      && secret.length >= minimumSecretLength,
     pin,
     secret,
   };
@@ -75,6 +89,37 @@ export function getSafeSiteAccessNext(value: string | null | undefined) {
   }
 
   return value;
+}
+
+export function isSiteAccessRequestSameOrigin({
+  fetchSite,
+  forwardedHost,
+  host,
+  origin,
+  referer,
+  urlHost,
+}: SiteAccessRequestOrigin) {
+  if (fetchSite === "cross-site") {
+    return false;
+  }
+
+  const allowedHosts = new Set(
+    [host, forwardedHost, urlHost]
+      .flatMap((value) => value?.split(",") ?? [])
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  const source = origin && origin !== "null" ? origin : referer;
+  if (source) {
+    try {
+      return allowedHosts.has(new URL(source).host.toLowerCase());
+    } catch {
+      return false;
+    }
+  }
+
+  return fetchSite === "same-origin";
 }
 
 export async function matchesSiteAccessPin(submitted: string, expected: string) {

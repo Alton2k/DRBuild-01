@@ -194,7 +194,7 @@ Notes:
 - `ADMIN_EMAILS` is the website user email allowed to open `/admin`.
 - `ADMIN_EMAILS` is not the Strapi admin email unless the same email is also used for the website login.
 - `NEXT_PUBLIC_SITE_URL` is used for canonical and sitemap URLs. Set it to the deployed frontend origin in production.
-- `SITE_ACCESS_PIN` optionally enables the private preview gate. Use a long, private access code rather than a short numeric PIN.
+- `SITE_ACCESS_PIN` optionally enables the private preview gate. It must be 12-128 characters; use a unique random value of at least 16 characters rather than a short numeric PIN.
 - `SITE_ACCESS_SECRET` signs the 15-minute HTTP-only access cookie and must be a random value at least 32 characters long. Keep it server-only.
 - Leave both site-access values empty for ordinary local development. Removing `SITE_ACCESS_PIN` and redeploying disables the gate for public launch.
 
@@ -791,13 +791,13 @@ STRAPI_URL=https://<temporary-strapi-domain>.up.railway.app
 STRAPI_API_TOKEN=<production Strapi API token>
 ADMIN_EMAILS=<comma-separated website admin emails>
 NEXT_PUBLIC_SITE_URL=https://dealrakyat.my
-SITE_ACCESS_PIN=<long private preview access code>
+SITE_ACCESS_PIN=<unique random preview code, 12-128 characters>
 SITE_ACCESS_SECRET=<random value at least 32 characters long>
 ```
 
 `NEXT_PUBLIC_SITE_URL` is a build-time public variable, so redeploy the frontend after changing it. Keep `STRAPI_API_TOKEN` unprefixed so it is never included in browser bundles.
 
-While the site is under development, set both `SITE_ACCESS_PIN` and `SITE_ACCESS_SECRET` for the Production environment. The frontend then redirects unauthenticated page requests to `/site-access`, returns `401` for protected frontend API routes, issues a signed 15-minute HTTP-only cookie after a correct code, and sends `noindex` directives. Redeploy after adding or removing these variables. Keep the Vercel frontend DNS records in Cloudflare set to **DNS only**; Cloudflare Access requires proxying and is not used in this architecture.
+While the site is under development, set both `SITE_ACCESS_PIN` and `SITE_ACCESS_SECRET` for the Production environment. The frontend then serves a JavaScript-free generic gate before any application page or asset, protects frontend API and health routes, issues a signed 15-minute HTTP-only cookie after a correct code, and sends restrictive cache, indexing, framing, referrer, and content-security headers. Redeploy after adding or removing these variables. Keep the Vercel frontend DNS records in Cloudflare set to **DNS only**; Cloudflare Access requires proxying and is not used in this architecture.
 
 ### 3. Cloudflare R2 uploads
 

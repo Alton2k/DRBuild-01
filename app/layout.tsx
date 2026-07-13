@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Fira_Code, Open_Sans, Roboto } from "next/font/google";
-import { headers } from "next/headers";
 import TopNav from "@/components/TopNav";
 import { getCurrentUser } from "@/lib/auth";
 import { getAbsoluteUrl, getSiteUrl, siteDescription, siteName } from "@/lib/site";
@@ -128,10 +127,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const requestHeaders = await headers();
-  const isSiteAccessPage = Boolean(process.env.SITE_ACCESS_PIN)
-    && requestHeaders.get("x-deal-rakyat-site-access-page") === "1";
-  const user = isSiteAccessPage ? null : await getCurrentUser();
+  const user = await getCurrentUser();
   const savedTheme = user
     ? await getAccountSettingsThemeForUser(user.id).catch(() => null)
     : null;
@@ -145,25 +141,19 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: createThemeScript(initialThemeMode) }} />
       </head>
       <body className={`${openSans.variable} ${roboto.variable} ${firaCode.variable} min-h-full flex flex-col`}>
-        {isSiteAccessPage ? (
-          <div id="main-content" className="flex flex-1 flex-col">
+        <>
+          <a
+            href="#main-content"
+            className="fixed left-4 top-4 z-[100] -translate-y-20 rounded-md bg-white px-4 py-2 font-bold text-slate-950 shadow-lg transition-transform focus:translate-y-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/25"
+          >
+            Skip to main content
+          </a>
+          <OfflineStatus />
+          <TopNav initialThemeMode={initialThemeMode ?? undefined} initialUser={user} />
+          <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col outline-none">
             {children}
           </div>
-        ) : (
-          <>
-            <a
-              href="#main-content"
-              className="fixed left-4 top-4 z-[100] -translate-y-20 rounded-md bg-white px-4 py-2 font-bold text-slate-950 shadow-lg transition-transform focus:translate-y-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/25"
-            >
-              Skip to main content
-            </a>
-            <OfflineStatus />
-            <TopNav initialThemeMode={initialThemeMode ?? undefined} initialUser={user} />
-            <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col outline-none">
-              {children}
-            </div>
-          </>
-        )}
+        </>
       </body>
     </html>
   );
