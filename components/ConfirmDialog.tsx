@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 
 export default function ConfirmDialog({
   open,
@@ -21,19 +22,27 @@ export default function ConfirmDialog({
   onConfirm: () => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
+  const [mounted, setMounted] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const titleId = `confirm-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const id = useId();
+  const titleId = `confirm-title-${id}`;
   const descriptionId = `${titleId}-description`;
 
   useEffect(() => {
-    if (!open) return;
+    const frame = window.requestAnimationFrame(() => setMounted(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     cancelRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !pending) {
+        event.preventDefault();
         onCancel();
         window.requestAnimationFrame(() => returnFocusRef?.current?.focus());
         return;
@@ -43,7 +52,10 @@ export default function ConfirmDialog({
       if (controls.length === 0) return;
       const first = controls[0];
       const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (!dialogRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -57,9 +69,9 @@ export default function ConfirmDialog({
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [onCancel, open, pending, returnFocusRef]);
+  }, [mounted, onCancel, open, pending, returnFocusRef]);
 
-  if (!open) return null;
+  if (!mounted || !open) return null;
 
   const cancel = () => {
     if (pending) return;
@@ -67,7 +79,7 @@ export default function ConfirmDialog({
     window.requestAnimationFrame(() => returnFocusRef?.current?.focus());
   };
 
-  return (
+  return createPortal(
     <div className="app-dialog-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6" onMouseDown={(event) => { if (event.target === event.currentTarget) cancel(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} className="post-discard-dialog w-full max-w-md rounded-3xl border p-5 shadow-2xl sm:p-6">
         <h2 id={titleId} className="text-xl font-bold tracking-tight text-slate-950">{title}</h2>
@@ -77,6 +89,7 @@ export default function ConfirmDialog({
           <button type="button" onClick={onConfirm} disabled={pending} className="inline-flex h-12 items-center justify-center rounded-full bg-rose-600 px-5 text-sm font-bold text-white transition hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-200 disabled:cursor-wait disabled:opacity-60">{pending ? "Deleting…" : confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

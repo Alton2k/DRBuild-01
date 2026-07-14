@@ -11,6 +11,9 @@ const MAX_URL_LENGTH = 2048;
 const BROWSER_LAUNCH_TIMEOUT_MS = 8_000;
 const NAVIGATION_TIMEOUT_MS = 12_000;
 const CONTENT_TIMEOUT_MS = 7_000;
+const HTTP_FETCH_TIMEOUT_MS = 8_000;
+const MAX_HTML_BYTES = 1_500_000;
+const MAX_HTTP_REDIRECTS = 5;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
@@ -246,6 +249,172 @@ function metadataResponse(metadata: ScrapedMetadata) {
     ...(metadata.store ? { store: metadata.store } : {}),
     ...(metadata.price ? { price: metadata.price } : {}),
   });
+}
+
+function decodeHtmlAttribute(value: string) {
+  return value.replace(
+    /&(?:#(\d+)|#x([\da-f]+)|amp|quot|apos|lt|gt);/gi,
+    (match, decimal: string | undefined, hexadecimal: string | undefined) => {
+      if (decimal || hexadecimal) {
+        const codePoint = Number.parseInt(decimal ?? hexadecimal ?? "", decimal ? 10 : 16);
+        return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+          ? String.fromCodePoint(codePoint)
+          : match;
+      }
+
+      const namedEntities: Record<string, string> = {
+        "&amp;": "&",
+        "&quot;": '"',
+        "&apos;": "'",
+        "&lt;": "<",
+        "&gt;": ">",
+      };
+
+      return namedEntities[match.toLowerCase()] ?? match;
+    },
+  );
+}
+
+function parseHtmlAttributes(tag: string) {
+  const attributes = new Map<string, string>();
+  const attributePattern = /([^\s=/><]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+  for (const match of tag.matchAll(attributePattern)) {
+    const name = match[1]?.toLowerCase();
+    if (!name || name === "meta" || name === "link") continue;
+
+    attributes.set(
+      name,
+      decodeHtmlAttribute(match[2] ?? match[3] ?? match[4] ?? ""),
+    );
+  }
+
+  return attributes;
+}
+
+function extractMetadataFromHtml(html: string, baseUrl: string): ScrapedMetadata {
+  const imageCandidates: string[] = [];
+  let store = "";
+  let price = "";
+
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    const attributes = parseHtmlAttributes(tag);
+    const key = cleanText(
+      attributes.get("property") ?? attributes.get("name") ?? attributes.get("itemprop"),
+    ).toLowerCase();
+    const content = cleanText(attributes.get("content"));
+
+    if (!content) continue;
+
+    if (["og:image", "og:image:secure_url", "twitter:image", "twitter:image:src", "image"].includes(key)) {
+      imageCandidates.push(content);
+    } else if (!store && ["og:site_name", "application-name"].includes(key)) {
+      store = content;
+    } else if (!price && ["product:price:amount", "og:price:amount", "price"].includes(key)) {
+      price = content;
+    }
+  }
+
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    const attributes = parseHtmlAttributes(tag);
+    if (attributes.get("rel")?.toLowerCase() === "image_src") {
+      imageCandidates.push(cleanText(attributes.get("href")));
+    }
+  }
+
+  return {
+    title: "",
+    image: chooseImageUrl(imageCandidates, baseUrl),
+    description: "",
+    store,
+    price,
+  };
+}
+
+async function readBoundedHtml(response: Response) {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_HTML_BYTES) {
+    throw new Error("Product page is too large to inspect safely");
+  }
+
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let receivedBytes = 0;
+  let html = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      receivedBytes += value.byteLength;
+      if (receivedBytes > MAX_HTML_BYTES) {
+        throw new Error("Product page is too large to inspect safely");
+      }
+
+      html += decoder.decode(value, { stream: true });
+    }
+
+    return html + decoder.decode();
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+async function extractWithHttp(url: string): Promise<ScrapedMetadata> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HTTP_FETCH_TIMEOUT_MS);
+  let currentUrl = url;
+
+  try {
+    for (let redirectCount = 0; redirectCount <= MAX_HTTP_REDIRECTS; redirectCount += 1) {
+      const response = await fetch(currentUrl, {
+        cache: "no-store",
+        headers: {
+          Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-MY,en;q=0.9,ms;q=0.8",
+          "User-Agent": USER_AGENT,
+        },
+        redirect: "manual",
+        signal: controller.signal,
+      });
+
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        await response.body?.cancel().catch(() => undefined);
+
+        if (!location || redirectCount === MAX_HTTP_REDIRECTS) {
+          throw new Error("Product page redirected too many times");
+        }
+
+        const redirectedUrl = new URL(location, currentUrl).toString();
+        const validation = validateUrl(redirectedUrl);
+        if (!validation.ok) throw new Error(validation.error);
+
+        currentUrl = validation.url;
+        continue;
+      }
+
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new Error(`Product page returned HTTP ${response.status}`);
+      }
+
+      const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+      if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new Error("Product URL did not return an HTML page");
+      }
+
+      return extractMetadataFromHtml(await readBoundedHtml(response), currentUrl);
+    }
+
+    return { title: "", image: "", description: "" };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
@@ -593,7 +762,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const metadata = await extractWithPlaywright(validation.url);
+    let metadata: ScrapedMetadata = await extractWithHttp(validation.url).catch(() => ({
+      title: "",
+      image: "",
+      description: "",
+    }));
+
+    // Chromium can terminate a constrained Vercel function before JavaScript can
+    // return an error. The bounded HTTP path is the production-safe scraper;
+    // retain browser fallback for local and other Node.js deployments.
+    if (!metadata.image && process.env.VERCEL !== "1") {
+      try {
+        const browserMetadata = await extractWithPlaywright(validation.url);
+        metadata = {
+          ...browserMetadata,
+          store: metadata.store || browserMetadata.store,
+          price: metadata.price || browserMetadata.price,
+        };
+      } catch (error) {
+        if (!hasMetadata(metadata)) throw error;
+      }
+    }
 
     if (hasMetadata(metadata)) {
       cacheMetadata(validation.url, metadata);
