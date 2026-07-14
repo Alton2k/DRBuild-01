@@ -161,6 +161,11 @@ Install Playwright Chromium for the product scraper:
 npx playwright install chromium
 ```
 
+This browser install is for local development. Vercel uses the pinned
+`@sparticuz/chromium` package and includes its serverless Chromium assets in the
+`/api/scrape` function bundle, so no separate browser-install command is needed
+during deployment.
+
 ## Environment Variables
 
 These files are intentionally ignored by Git:
@@ -781,11 +786,16 @@ Do not generate replacement Strapi secrets when connecting the existing database
 
 `R2_ENDPOINT` enables the S3-compatible upload provider. When it is absent, local development continues to use Strapi's local upload provider. Production must use R2 because Railway service filesystems are ephemeral.
 
-After Strapi is healthy, open its `/admin` page and create or confirm the production API token. Copy it into Vercel as `STRAPI_API_TOKEN`; it is not a public browser variable.
+After Strapi is healthy, open its `/admin` page and create or confirm the production API token. Copy it into Vercel as `STRAPI_API_TOKEN` and redeploy the frontend; it is not a public browser variable. Prefer a least-privilege Custom token and keep its actions synchronized with the application: comment deletion specifically needs Comment `find`, `findOne`, and `delete`; Comment Report `find` and `delete`; and Deal `find` and `update` for stored-count reconciliation. Other workflows also use the `create` and `update` actions for Deal, Comment, and Comment Report, plus the Upload actions described below. Comment deletion reads the entire reply subtree, removes associated Comment Report records, deletes descendants before their parent, and then reconciles the Deal comment count. Missing Comment or Comment Report access aborts the destructive sequence; missing Deal access can leave the denormalized count stale after deletion.
 
 ### 2. Next.js on Vercel
 
 Import the same repository into Vercel. Keep the project root at `/`; Vercel detects and builds Next.js directly.
+
+The product scraper runs as a Node.js function with a 45-second route limit and
+launches the Chromium binary packaged by `@sparticuz/chromium`. Keep that package
+version aligned with the Chromium browser version declared by the pinned
+Playwright release when upgrading either dependency.
 
 Set these Vercel variables:
 

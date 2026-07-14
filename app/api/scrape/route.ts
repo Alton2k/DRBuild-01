@@ -1,9 +1,11 @@
 import { isIP } from "node:net";
+import serverlessChromium from "@sparticuz/chromium";
 import { type NextRequest, NextResponse } from "next/server";
-import { chromium } from "playwright";
+import { chromium as playwrightChromium } from "playwright";
 import { validateDealUrl } from "@/lib/dealUrlSecurity";
 
 export const runtime = "nodejs";
+export const maxDuration = 45;
 
 const MAX_URL_LENGTH = 2048;
 const BROWSER_LAUNCH_TIMEOUT_MS = 8_000;
@@ -247,10 +249,20 @@ function metadataResponse(metadata: ScrapedMetadata) {
 }
 
 async function extractWithPlaywright(url: string): Promise<ScrapedMetadata> {
-  const browser = await chromium.launch({
-    headless: true,
-    timeout: BROWSER_LAUNCH_TIMEOUT_MS,
-  });
+  const isVercel = process.env.VERCEL === "1";
+  const browser = await playwrightChromium.launch(
+    isVercel
+      ? {
+          args: serverlessChromium.args,
+          executablePath: await serverlessChromium.executablePath(),
+          headless: true,
+          timeout: BROWSER_LAUNCH_TIMEOUT_MS,
+        }
+      : {
+          headless: true,
+          timeout: BROWSER_LAUNCH_TIMEOUT_MS,
+        },
+  );
 
   try {
     const context = await browser.newContext({

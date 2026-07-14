@@ -521,7 +521,16 @@ async function loadCommentTreeDeleteOrder(dealId: string, rootId: string) {
       "pagination[page]": String(page),
       "pagination[pageSize]": "100",
     });
-    const response = await strapiRequest<StrapiListResponse<StrapiComment>>("/api/comments", { query });
+    const response = await strapiRequest<StrapiListResponse<StrapiComment>>("/api/comments", {
+      query,
+      requireToken: true,
+    }).catch((error) => {
+      logDataFetchError(
+        { functionName: "deleteCommentTree.loadComments", endpoint: "/api/comments", query },
+        error,
+      );
+      throw error;
+    });
     for (const entity of response.data) {
       const fields = getStrapiEntityFields(entity);
       comments.push({ id: getStrapiEntityId(entity), parentId: fields.parentId ?? null });
@@ -539,10 +548,23 @@ async function deleteReportsForComments(commentIds: string[]) {
     while (true) {
       const query = new URLSearchParams({ "pagination[pageSize]": "100" });
       chunk.forEach((commentId, index) => query.set(`filters[commentDocumentId][$in][${index}]`, commentId));
-      const reports = await strapiRequest<StrapiListResponse<StrapiCommentReport>>("/api/comment-reports", { query });
+      const reports = await strapiRequest<StrapiListResponse<StrapiCommentReport>>("/api/comment-reports", {
+        query,
+        requireToken: true,
+      }).catch((error) => {
+        logDataFetchError(
+          { functionName: "deleteCommentTree.loadReports", endpoint: "/api/comment-reports", query },
+          error,
+        );
+        throw error;
+      });
       if (reports.data.length === 0) break;
       for (const report of reports.data) {
-        await strapiRequest(`/api/comment-reports/${getStrapiEntityId(report)}`, { method: "DELETE", requireToken: true });
+        const endpoint = `/api/comment-reports/${getStrapiEntityId(report)}`;
+        await strapiRequest(endpoint, { method: "DELETE", requireToken: true }).catch((error) => {
+          logDataFetchError({ functionName: "deleteCommentTree.deleteReport", endpoint }, error);
+          throw error;
+        });
       }
     }
   }
@@ -552,13 +574,18 @@ async function deleteCommentTree(rootId: string, dealId: string) {
   const deleteOrder = dealId ? await loadCommentTreeDeleteOrder(dealId, rootId) : [rootId];
   await deleteReportsForComments(deleteOrder);
   for (const commentId of deleteOrder) {
-    await strapiRequest(`/api/comments/${commentId}`, { method: "DELETE", requireToken: true });
+    const endpoint = `/api/comments/${commentId}`;
+    await strapiRequest(endpoint, { method: "DELETE", requireToken: true }).catch((error) => {
+      logDataFetchError({ functionName: "deleteCommentTree.deleteComment", endpoint }, error);
+      throw error;
+    });
   }
 }
 
 export async function deleteComment(id: string): Promise<{ dealId: string } | null> {
   const comment = await strapiRequest<StrapiSingleResponse<StrapiComment>>(`/api/comments/${id}`, {
     query: new URLSearchParams({ populate: "deal" }),
+    requireToken: true,
   })
     .then((response) => (response.data ? toComment(response.data) : null))
     .catch((error) => {
@@ -582,6 +609,7 @@ export async function deleteOwnComment(
 ): Promise<{ dealId: string } | null> {
   const comment = await strapiRequest<StrapiSingleResponse<StrapiComment>>(`/api/comments/${id}`, {
     query: new URLSearchParams({ populate: "deal" }),
+    requireToken: true,
   })
     .then((response) => (response.data ? toComment(response.data) : null))
     .catch((error) => {

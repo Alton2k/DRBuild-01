@@ -38,6 +38,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local testing credentials
+/LOCAL_TEST_CREDENTIALS.md
+
 # vercel
 .vercel
 
@@ -47,4 +50,3 @@ next-env.d.ts
 
 # strapi generated types
 /backend/types/generated/
-
