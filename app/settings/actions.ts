@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { changeCurrentUserPassword, getCurrentUser, strapiAuthCookieName } from "@/lib/auth";
+import { checkViewerAndIpRateLimit, getClientIp } from "@/lib/abusePrevention";
 import type { AccountSettings } from "@/lib/accountSettings";
 import { displayNameLimit, profileBioLimit } from "@/lib/accountSettings";
 import {
@@ -14,6 +16,12 @@ export type SaveAccountSettingsActionResult = {
   ok: boolean;
   message: string;
   settings?: AccountSettings;
+};
+
+export type ChangePasswordActionResult = {
+  ok: boolean;
+  field?: "currentPassword" | "password" | "passwordConfirmation" | "form";
+  message: string;
 };
 
 const avatarDataUrlLimit = 450_000;
@@ -66,7 +74,11 @@ function validateSettingsPatch(patch: AccountSettingsPatch): AccountSettingsPatc
   }
 
   if (patch.toggles) {
-    nextPatch.toggles = patch.toggles;
+    nextPatch.toggles = {
+      ...patch.toggles,
+      weeklySummary: false,
+      marketingEmails: false,
+    };
   }
 
   return nextPatch;
@@ -104,4 +116,34 @@ export async function saveAccountSettingsAction(patch: AccountSettingsPatch): Pr
           : "Unable to save settings.",
     };
   }
+}
+
+export async function changePasswordAction(input: {
+  currentPassword: string;
+  password: string;
+  passwordConfirmation: string;
+}): Promise<ChangePasswordActionResult> {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return { ok: false, field: "form", message: "Please log in again before changing your password." };
+  }
+
+  const ip = await getClientIp();
+  if (!checkViewerAndIpRateLimit("password", user.id, ip, 5, 15 * 60)) {
+    return { ok: false, field: "form", message: "Too many password attempts. Try again in 15 minutes." };
+  }
+
+  const result = await changeCurrentUserPassword(input);
+  if (!result.ok) return result;
+
+  (await cookies()).set(strapiAuthCookieName, result.jwt, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 30,
+    path: "/",
+  });
+
+  return { ok: true, message: "Password changed. Your current session has been refreshed." };
 }

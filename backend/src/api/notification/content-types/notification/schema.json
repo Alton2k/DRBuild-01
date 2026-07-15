@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "notifications",
+  "info": {
+    "singularName": "notification",
+    "pluralName": "notifications",
+    "displayName": "Notification"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "recipientUserId": {
+      "type": "string",
+      "required": true
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": ["new_comment", "comment_reply", "deal_approval", "saved_deal_update"],
+      "required": true
+    },
+    "actorUserId": {
+      "type": "string"
+    },
+    "dealDocumentId": {
+      "type": "string"
+    },
+    "commentDocumentId": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string",
+      "required": true,
+      "maxLength": 240
+    },
+    "readAt": {
+      "type": "datetime"
+    },
+    "dedupeKey": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "private": true
+    }
+  }
+}

@@ -21,6 +21,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Do not perform speculative refactors or expand the requested scope.
 - Use `rg` for repository searches and `apply_patch` for manual edits.
 - Update relevant documentation when behaviour, configuration, or setup changes.
+- Record every agreed project TODO in `docs/TODO.md` with its status, date, and concise completion criteria.
 
 ## Security and shared data
 

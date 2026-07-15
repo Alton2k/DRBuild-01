@@ -136,10 +136,12 @@ function getCategoryGridStyle(itemCount: number): CategoryGridStyle {
 export default function TopNavClient({
   categories,
   initialThemeMode = "auto",
+  isAdmin,
   userEmail,
 }: {
   categories: DealCategory[];
   initialThemeMode?: ThemeMode;
+  isAdmin: boolean;
   userEmail: string | null;
   userName: string | null;
 }) {
@@ -511,7 +513,9 @@ export default function TopNavClient({
   const authHref = `/auth?next=${encodeURIComponent(authNext)}`;
   const postIsActive = pathname === "/post";
   const profileIsActive = pathname === "/profile";
+  const adminIsActive = pathname.startsWith("/admin");
   const settingsIsActive = pathname === "/settings";
+  const notificationsIsActive = pathname === "/notifications";
   const secondaryCategories = secondaryCategoryNames
     .map((categoryName) => categories.find((category) => category.name === categoryName))
     .filter((category): category is DealCategory => Boolean(category));
@@ -860,6 +864,28 @@ export default function TopNavClient({
               >
                 Profile
               </Link>
+              <Link
+                href="/notifications"
+                aria-current={notificationsIsActive ? "page" : undefined}
+                className={`topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
+                  notificationsIsActive ? "is-active" : ""
+                }`}
+              >
+                Inbox
+              </Link>
+              {isAdmin ? (
+                <Link
+                  href="/admin"
+                  aria-current={adminIsActive ? "page" : undefined}
+                  className={`topbar-account-action inline-flex h-10 max-w-[180px] items-center justify-center truncate rounded-full border px-4 text-sm font-semibold transition ${
+                    adminIsActive
+                      ? "is-active"
+                      : ""
+                  }`}
+                >
+                  Admin
+                </Link>
+              ) : null}
               <form action={signOutAction} className="contents">
                 <button
                   type="submit"
@@ -1170,6 +1196,34 @@ export default function TopNavClient({
                     </svg>
                     <span>Profile</span>
                   </Link>
+                  {isAdmin ? (
+                    <Link
+                      href="/admin"
+                      onClick={closeMenu}
+                      aria-current={adminIsActive ? "page" : undefined}
+                      className={`inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                        adminIsActive
+                          ? "sidebar-menu-action-active"
+                          : "sidebar-menu-action"
+                      }`}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5 shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      >
+                        <path d="M12 3 4.5 6v5.5c0 4.8 3.2 8 7.5 9.5 4.3-1.5 7.5-4.7 7.5-9.5V6Z" />
+                        <path d="M9 12h6" />
+                        <path d="M12 9v6" />
+                      </svg>
+                      <span>Admin</span>
+                    </Link>
+                  ) : null}
                   <Link
                     href="/settings"
                     onClick={closeMenu}
@@ -1194,6 +1248,31 @@ export default function TopNavClient({
                       <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.05V3h4v.08a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z" />
                     </svg>
                     <span>Settings</span>
+                  </Link>
+                  <Link
+                    href="/notifications"
+                    onClick={closeMenu}
+                    aria-current={notificationsIsActive ? "page" : undefined}
+                    className={`inline-flex h-10 w-full items-center gap-3 rounded-lg px-1 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
+                      notificationsIsActive
+                        ? "sidebar-menu-action-active"
+                        : "sidebar-menu-action"
+                    }`}
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                    >
+                      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+                      <path d="M10 21h4" />
+                    </svg>
+                    <span>Notifications</span>
                   </Link>
                   <form action={signOutAction}>
                     <button

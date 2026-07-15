@@ -38,7 +38,7 @@ test("retains, adds, and removes only media tracked by the deal", () => {
       { id: 11, url: "https://media.example/keep.jpg" },
       { id: 12, url: "https://media.example/remove.jpg" },
     ],
-    ["https://media.example/keep.jpg", "https://external.example/scraped.jpg", "https://media.example/new.jpg"],
+    ["https://media.example/keep.jpg", "https://external.example/stored.jpg", "https://media.example/new.jpg"],
     [{ id: 13, url: "https://media.example/new.jpg" }],
   );
 

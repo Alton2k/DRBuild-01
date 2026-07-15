@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { clearCommentReportsAsAdminAction, deleteCommentAsAdminAction } from "@/app/actions";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { formatMalaysiaDateTime } from "@/lib/formatters";
 
 export interface CommentModerationRow {
   id: string;
@@ -21,17 +22,6 @@ export interface CommentModerationRow {
 
 interface CommentModerationTableProps {
   initialComments: CommentModerationRow[];
-}
-
-function formatDate(timestamp: string) {
-  return new Intl.DateTimeFormat("en-MY", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Kuala_Lumpur",
-  }).format(new Date(timestamp));
 }
 
 export default function CommentModerationTable({
@@ -132,21 +122,21 @@ export default function CommentModerationTable({
   };
 
   return (
-    <section id="comments" className="space-y-6 border-t border-slate-200 pt-6 sm:pt-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <section id="comments" className="settings-section-divider scroll-mt-32 space-y-6 py-8">
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-            Comment controls
+          <h2 className="text-3xl font-black tracking-tight text-slate-950">Comments</h2>
+          <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">
+            Review discussions and resolve reported content without losing context.
           </p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-950">Discussion moderation</h2>
         </div>
-        <label className="grid gap-2 text-sm font-semibold text-slate-700">
+        <label className="grid gap-2 self-end text-sm font-semibold text-slate-700 lg:justify-self-end">
           <span className="sr-only">Search comments</span>
           <input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="Search comments"
-            className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
+            className="min-h-11 w-full rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-normal text-slate-950 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-[#dc115e] focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 sm:min-w-[220px]"
           />
         </label>
       </div>
@@ -209,7 +199,7 @@ export default function CommentModerationTable({
                         {Array.from(new Set(comment.reportReasons)).map((reason) => reason.replace(/-/g, " ")).join(", ")}
                       </p>
                     ) : null}
-                    <p className="text-slate-500">{formatDate(comment.createdAt)}</p>
+                    <p className="text-slate-500">{formatMalaysiaDateTime(comment.createdAt)}</p>
                   </div>
                   <div className="admin-moderation-actions flex flex-wrap gap-2 text-sm lg:justify-end">
                     {comment.reportCount > 0 ? (
@@ -220,7 +210,7 @@ export default function CommentModerationTable({
                           setClearReportsConfirmId(comment.id);
                         }}
                         disabled={rowPending}
-                        className="inline-flex min-h-10 items-center justify-center rounded-2xl bg-sky-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex min-h-11 items-center justify-center rounded-md bg-sky-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {rowPending ? "Working…" : "Clear reports"}
                       </button>
@@ -232,7 +222,7 @@ export default function CommentModerationTable({
                         setDeleteConfirmId(comment.id);
                       }}
                       disabled={rowPending}
-                      className="inline-flex min-h-10 items-center justify-center rounded-2xl bg-rose-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-11 items-center justify-center rounded-md bg-rose-600 px-3 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {rowPending ? "Deleting…" : "Delete"}
                     </button>

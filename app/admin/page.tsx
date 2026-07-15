@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { getDealsResult, type Deal } from "@/lib/deals";
 import { getAdminCommentsResult } from "@/lib/comments";
 import { getAdminEmails, getCurrentUser, isAdminUser } from "@/lib/auth";
@@ -22,7 +24,32 @@ const navigation = [
 export const metadata = {
   title: "Admin Dashboard - Moderate Deals",
   description: "Admin dashboard for deal moderation and review.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
+
+async function getUnauthorizedReturnPath() {
+  const requestHeaders = await headers();
+  const referer = requestHeaders.get("referer");
+  const requestHost = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+
+  if (!referer || !requestHost) return "/";
+
+  try {
+    const returnUrl = new URL(referer);
+    const returnPath = `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`;
+
+    if (returnUrl.host !== requestHost || returnUrl.pathname.startsWith("/admin")) {
+      return "/";
+    }
+
+    return returnPath.startsWith("/") ? returnPath : "/";
+  } catch {
+    return "/";
+  }
+}
 
 const moderationNotices: Record<string, string> = {
   "comment-deleted": "Comment and its replies were deleted.",
@@ -117,24 +144,9 @@ export default async function AdminDashboardPage({
   const user = await getCurrentUser();
   const isAdmin = isAdminUser(user);
   const adminEmails = getAdminEmails();
-  const hasAdminConfig = adminEmails.length > 0;
 
   if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-slate-50 px-4 py-16 text-center text-slate-900 sm:px-6 lg:px-8">
-        <div className="mx-auto inline-flex max-w-xl flex-col items-center rounded-3xl border border-slate-200 bg-white p-16 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">Access Denied</p>
-          <h1 className="mt-4 text-3xl font-semibold text-slate-950">
-            {user ? "You do not have permission to view this page." : "Please sign in with an admin account."}
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {hasAdminConfig
-              ? "This section is restricted to administrators only."
-              : "Set ADMIN_EMAILS in .env.local with comma-separated admin email addresses, then restart the dev server."}
-          </p>
-        </div>
-      </div>
-    );
+    redirect(await getUnauthorizedReturnPath());
   }
 
   const [dealsResult, commentsResult] = await Promise.all([getDealsResult(), getAdminCommentsResult()]);
@@ -183,117 +195,83 @@ export default async function AdminDashboardPage({
   }));
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-8 xl:flex-row xl:items-start">
-          <aside className="w-full rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-24 xl:w-[280px]">
-            <div className="mb-7">
-              <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">Admin</p>
-              <h1 className="mt-3 text-2xl font-semibold text-slate-950">Dashboard</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Moderate submissions, inspect trust signals, and keep the public feed clean.
-              </p>
-            </div>
-            <nav className="space-y-2">
-              {navigation.map((item) => (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  className="block rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
-                >
-                  {item.label}
-                </a>
-              ))}
-            </nav>
+    <main className="admin-page home-page min-h-screen text-slate-900">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 py-2 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Admin</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+              Moderation
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Review queues, trust signals, and community reports.
+            </p>
+          </div>
+          <p className="max-w-full truncate text-xs font-semibold text-slate-500" title={user?.email}>
+            Signed in as {user?.email}
+          </p>
+        </header>
 
-            <div className="mt-7 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                Signed in
-              </p>
-              <p className="mt-2 break-all text-sm font-semibold text-slate-950">{user?.email}</p>
-            </div>
-          </aside>
+        <nav
+          aria-label="Admin sections"
+          className="admin-section-nav sticky top-16 z-20 -mx-4 mt-5 flex gap-1 overflow-x-auto border-y border-slate-200 bg-white/90 px-4 py-2 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:px-2"
+        >
+          {navigation.map((item) => (
+            <a
+              key={item.label}
+              href={item.href}
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
 
-          <section className="flex-1 space-y-6">
+        <section className="mt-6 space-y-6">
             {moderationNotice ? (
               <p className="theme-alert theme-alert-success px-4 py-3 text-sm font-semibold" role="status">
                 {moderationNotice}
               </p>
             ) : null}
-            <div id="overview" className="pb-2 sm:pb-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div id="overview" className="scroll-mt-32 py-3">
+              <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
-                    Moderation
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold text-slate-950">
-                    Admin Overview
-                  </h2>
-                  <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600">
-                    Review deal quality, watch user trust signals, and intervene where automation has held something for a human decision.
+                  <h2 className="text-3xl font-black tracking-tight text-slate-950">Overview</h2>
+                  <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">
+                    Start with items that need a person, then scan the wider marketplace health.
                   </p>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  {autoApprovalRate}% auto-approved
-                </div>
-              </div>
-
-              {dealsUnavailable || commentsUnavailable ? (
-                <div className="theme-alert theme-alert-warning mt-6 flex flex-wrap items-center justify-between gap-3 p-4 text-sm font-semibold" role="alert">
-                  <span>{dealsUnavailable && commentsUnavailable
-                    ? "Deals and comments are temporarily unavailable."
-                    : dealsUnavailable
-                      ? "Deals are temporarily unavailable."
-                      : "Comments are temporarily unavailable."}</span>
-                  <a href="/admin" className="inline-flex h-10 items-center justify-center rounded-full border border-current px-4 text-xs font-bold">Try again</a>
-                </div>
-              ) : null}
-
-              <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                    Pending
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold text-amber-950">{pendingDealCount}</p>
-                  <p className="mt-1 text-sm text-amber-800">Deals waiting for review</p>
-                </div>
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                    Published
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold text-emerald-950">{approvedDealCount}</p>
-                  <p className="mt-1 text-sm text-emerald-800">Approved deals in the feed</p>
-                </div>
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
-                    Rejected
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold text-rose-950">{rejectedDealCount}</p>
-                  <p className="mt-1 text-sm text-rose-800">Deals blocked from feed</p>
-                </div>
-                <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                    Users
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold text-sky-950">{userRows.length}</p>
-                  <p className="mt-1 text-sm text-sky-800">
-                    {trustedUserCount} trusted, {reviewUserCount} need review
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-slate-950">{deals.length} total deals</p>
-                  <p className="mt-1 text-sm text-slate-600">All submitted deal records.</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-slate-950">{reportedDealCount} reported deals</p>
-                  <p className="mt-1 text-sm text-slate-600">Prioritized in the moderation queue.</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-slate-950">{comments.length} comments</p>
-                  <p className="mt-1 text-sm text-slate-600">{reportedCommentCount} reported and prioritized for review.</p>
+                <div>
+                  {dealsUnavailable || commentsUnavailable ? (
+                    <div className="theme-alert theme-alert-warning mb-5 flex flex-wrap items-center justify-between gap-3 p-4 text-sm font-semibold" role="alert">
+                      <span>{dealsUnavailable && commentsUnavailable
+                        ? "Deals and comments are temporarily unavailable."
+                        : dealsUnavailable
+                          ? "Deals are temporarily unavailable."
+                          : "Comments are temporarily unavailable."}</span>
+                      <a href="/admin" className="inline-flex min-h-11 items-center justify-center rounded-full border border-current px-4 text-xs font-bold">Try again</a>
+                    </div>
+                  ) : null}
+                  <div className="grid border-y border-slate-200 sm:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["Pending", pendingDealCount, "Waiting for review", "text-amber-700"],
+                      ["Reported", reportedDealCount + reportedCommentCount, "Deals and comments", "text-rose-700"],
+                      ["Published", approvedDealCount, "Approved deals", "text-emerald-700"],
+                      ["Users", userRows.length, `${trustedUserCount} trusted, ${reviewUserCount} review`, "text-sky-700"],
+                    ].map(([label, value, description, tone]) => (
+                      <div key={label} className="border-b border-slate-200 px-1 py-4 last:border-b-0 sm:border-r sm:px-4 sm:[&:nth-child(2)]:border-r-0 xl:border-b-0 xl:[&:nth-child(2)]:border-r">
+                        <p className={`text-xs font-bold uppercase tracking-[0.16em] ${tone}`}>{label}</p>
+                        <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+                        <p className="mt-1 text-xs text-slate-500">{description}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+                    <span><strong className="text-slate-950">{deals.length}</strong> total deals</span>
+                    <span><strong className="text-slate-950">{rejectedDealCount}</strong> rejected</span>
+                    <span><strong className="text-slate-950">{comments.length}</strong> comments</span>
+                    <span><strong className="text-slate-950">{autoApprovalRate}%</strong> auto-approved</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -301,8 +279,7 @@ export default async function AdminDashboardPage({
             <UserOverviewTable users={userRows} />
             <DealModerationTable initialDeals={moderationRows} />
             <CommentModerationTable initialComments={commentRows} />
-          </section>
-        </div>
+        </section>
       </div>
     </main>
   );

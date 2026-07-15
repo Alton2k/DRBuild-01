@@ -1,4 +1,4 @@
-import { AppUser, getCurrentUser } from "@/lib/auth";
+import { AppUser, getCurrentUser, isAdminUser } from "@/lib/auth";
 import { dealCategories } from "@/lib/categories";
 import TopNavClient from "./TopNavClient";
 
@@ -18,6 +18,7 @@ export default async function TopNav({
     <TopNavClient
       categories={dealCategories}
       initialThemeMode={initialThemeMode}
+      isAdmin={isAdminUser(user)}
       userEmail={user?.email ?? null}
       userName={user?.user_metadata.name ?? user?.email ?? null}
     />

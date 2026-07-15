@@ -1,4 +1,6 @@
 import type { Core } from '@strapi/strapi';
+import { errors } from '@strapi/utils';
+import { hasImmutableUserSettingChange } from './api/user-setting/utils/immutability';
 
 const userHandleMinLength = 3;
 const userHandleMaxLength = 24;
@@ -248,6 +250,35 @@ export default {
         await ensureUserSettingForUser(strapi, event.result).catch((error) => {
           strapi.log.error('Could not create user setting for new user', error);
         });
+      },
+    });
+
+    strapi.db.lifecycles.subscribe({
+      models: ['api::user-setting.user-setting'],
+      async beforeUpdate(event) {
+        const patch = event.params.data as { userId?: unknown; username?: unknown } | undefined;
+
+        if (!patch || (patch.userId === undefined && patch.username === undefined)) {
+          return;
+        }
+
+        const existing = await strapi.db.query('api::user-setting.user-setting').findOne({
+          where: event.params.where,
+        });
+
+        if (!existing) {
+          return;
+        }
+
+        const immutableChange = hasImmutableUserSettingChange(existing, patch);
+
+        if (immutableChange.changesUserId) {
+          throw new errors.ValidationError('The account owner cannot be changed.');
+        }
+
+        if (immutableChange.changesHandle) {
+          throw new errors.ValidationError('The profile handle cannot be changed.');
+        }
       },
     });
 

@@ -18,7 +18,7 @@ import {
   voteDeal,
   type DealStatus,
 } from "@/lib/deals";
-import { clearCommentReports, createComment, deleteComment, deleteOwnComment, hasCommentReportForViewer, hasDuplicateComment, likeComment, reportComment, updateOwnComment } from "@/lib/comments";
+import { clearCommentReports, createComment, deleteComment, deleteOwnComment, getCommentsForDeal, hasCommentReportForViewer, hasDuplicateComment, likeComment, reportComment, updateOwnComment } from "@/lib/comments";
 import {
   getCurrentUser,
   getPublicUserDisplayName,
@@ -27,8 +27,9 @@ import {
   requireCurrentUser,
 } from "@/lib/auth";
 import { followUser, isFollowingUser, unfollowUser } from "@/lib/follows";
-import { saveDealForUser, unsaveDealForUser } from "@/lib/savedDeals";
+import { getSavedDealUserIdsForDeal, saveDealForUser, unsaveDealForUser } from "@/lib/savedDeals";
 import { getAccountSettingsForUser } from "@/lib/userSettings";
+import { createAccountNotification } from "@/lib/notifications";
 import { getDescriptionText, sanitizeDescriptionHtml } from "@/lib/description";
 import { validateDealUrl } from "@/lib/dealUrlSecurity";
 import { getDealTitleValidationError } from "@/lib/dealTitleValidation";
@@ -717,6 +718,22 @@ export async function updateOwnDealAction(
 
     await deleteUploadedDealMedia(mediaChanges.removedFileIds);
 
+    if (nextStatus === "approved") {
+      const savedByUserIds = await getSavedDealUserIdsForDeal(dealId).catch(() => []);
+      await Promise.allSettled(
+        savedByUserIds.map((recipientUserId) =>
+          createAccountNotification({
+            recipientUserId,
+            actorUserId: user.id,
+            type: "saved_deal_update",
+            dealDocumentId: dealId,
+            eventVersion: updatedDeal.updatedAt,
+            message: `A saved deal was updated: “${updatedDeal.title.slice(0, 150)}”.`,
+          }),
+        ),
+      );
+    }
+
     revalidatePath("/");
     revalidatePath("/admin");
     revalidatePath("/profile");
@@ -786,7 +803,34 @@ export async function moderateDealAction(id: string, status: DealStatus) {
     throw new Error("Invalid moderation status.");
   }
 
+  const existingDeal = status === "approved" ? await getDealById(id) : null;
   await updateDealStatus(id, status, `admin_manual_${status}`);
+
+  if (status === "approved" && existingDeal?.authorUserId && existingDeal.status !== "approved") {
+    await createAccountNotification({
+      recipientUserId: existingDeal.authorUserId,
+      type: "deal_approval",
+      dealDocumentId: existingDeal.id,
+      eventVersion: existingDeal.updatedAt,
+      message: `Your deal “${existingDeal.title.slice(0, 140)}” was approved.`,
+    }).catch(() => null);
+  }
+
+  if (status === "approved" && existingDeal && existingDeal.status !== "approved") {
+    const savedByUserIds = await getSavedDealUserIdsForDeal(id).catch(() => []);
+    await Promise.allSettled(
+      savedByUserIds.map((recipientUserId) =>
+        createAccountNotification({
+          recipientUserId,
+          actorUserId: existingDeal.authorUserId,
+          type: "saved_deal_update",
+          dealDocumentId: id,
+          eventVersion: existingDeal.updatedAt,
+          message: `A saved deal is available again with updates: “${existingDeal.title.slice(0, 140)}”.`,
+        }),
+      ),
+    );
+  }
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath(`/deal/${id}`);
@@ -1107,8 +1151,9 @@ export async function createCommentAction(
     };
   }
 
+  let createdComment;
   try {
-    await createComment({
+    createdComment = await createComment({
       dealId,
       parentId,
       authorViewerId: viewerId,
@@ -1122,6 +1167,25 @@ export async function createCommentAction(
       return { ok: false, message: "You’ve already posted that comment." };
     }
     return { ok: false, message: "Could not post this comment. Check your connection and try again." };
+  }
+
+  const parentComment = parentId
+    ? (await getCommentsForDeal(dealId).catch(() => [])).find((comment) => comment.id === parentId)
+    : null;
+  const notificationRecipient = parentComment?.authorUserId ?? deal.authorUserId;
+
+  if (notificationRecipient) {
+    await createAccountNotification({
+      recipientUserId: notificationRecipient,
+      actorUserId: user.id,
+      type: parentComment ? "comment_reply" : "new_comment",
+      dealDocumentId: deal.id,
+      commentDocumentId: createdComment.id,
+      eventVersion: createdComment.id,
+      message: parentComment
+        ? `${authorName.slice(0, 70)} replied to your comment on “${deal.title.slice(0, 120)}”.`
+        : `${authorName.slice(0, 70)} commented on your deal “${deal.title.slice(0, 120)}”.`,
+    }).catch(() => null);
   }
 
   revalidatePath("/");

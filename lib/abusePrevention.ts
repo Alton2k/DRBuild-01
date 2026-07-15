@@ -2,7 +2,7 @@ import "server-only";
 
 import { cookies, headers } from "next/headers";
 
-export type AbuseAction = "vote" | "report" | "comment";
+export type AbuseAction = "vote" | "report" | "comment" | "password";
 
 type RateLimitBucket = {
   count: number;

@@ -106,6 +106,36 @@ export async function getSavedDealIdsForUser(userId: string) {
   return savedDealIds;
 }
 
+export async function getSavedDealUserIdsForDeal(dealDocumentId: string) {
+  const pageSize = 100;
+  const userIds = new Set<string>();
+  let page = 1;
+  let pageCount = 1;
+
+  do {
+    const query = new URLSearchParams({
+      "filters[dealDocumentId][$eq]": dealDocumentId,
+      "fields[0]": "userId",
+      "pagination[page]": String(page),
+      "pagination[pageSize]": String(pageSize),
+    });
+    const response = await strapiRequest<StrapiListResponse<StrapiSavedDeal>>("/api/saved-deals", {
+      query,
+      requireToken: true,
+    });
+
+    for (const entity of response.data) {
+      const userId = getStrapiEntityFields(entity).userId?.trim();
+      if (userId) userIds.add(userId);
+    }
+
+    pageCount = response.meta?.pagination?.pageCount ?? 1;
+    page += 1;
+  } while (page <= pageCount);
+
+  return [...userIds];
+}
+
 async function findSavedDeal(userId: string, dealDocumentId: string) {
   const query = new URLSearchParams({
     "filters[userId][$eq]": userId,

@@ -17,7 +17,6 @@ import ProfileCommentPreviewCard from "./ProfileCommentPreviewCard";
 import ProfileDealPreviewCard from "./ProfileDealPreviewCard";
 import ProfileEmptyState from "./ProfileEmptyState";
 import ProfilePaginationControls from "./ProfilePaginationControls";
-import ProfileFollowLists, { type ProfileFollowListItem } from "./ProfileFollowLists";
 
 type ProfileTab = "posted" | "saved" | "comments";
 type CommentSort = "newest" | "oldest";
@@ -95,8 +94,6 @@ export default function ProfileActivityTabs({
   showCommentStat = true,
   showFollowingStat = true,
   showOwnerActions = false,
-  followerProfiles = [],
-  followingProfiles = [],
 }: {
   postedDeals: Deal[];
   savedDeals: SavedDeal[];
@@ -120,8 +117,6 @@ export default function ProfileActivityTabs({
   showCommentStat?: boolean;
   showFollowingStat?: boolean;
   showOwnerActions?: boolean;
-  followerProfiles?: ProfileFollowListItem[];
-  followingProfiles?: ProfileFollowListItem[];
 }) {
   const [activeTab, setActiveTab] = useState<ProfileTab>("posted");
   const [postedPage, setPostedPage] = useState(1);
@@ -199,9 +194,6 @@ export default function ProfileActivityTabs({
               </div>
             ))}
           </dl>
-          {(followerProfiles.length > 0 || followingProfiles.length > 0) ? (
-            <ProfileFollowLists followers={followerProfiles} following={followingProfiles} />
-          ) : null}
         </section>
         ) : null}
         <div

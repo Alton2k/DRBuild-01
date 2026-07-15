@@ -11,12 +11,9 @@ import { getSavedDealsForUserResult } from "@/lib/savedDeals";
 import { getDealVoteViewerAliases, getDealVoteViewerId } from "@/lib/dealVoteIdentity";
 import { createDefaultAccountSettings } from "@/lib/accountSettings";
 import { ensureAccountSettingsForUser } from "@/lib/userSettings";
-import { getFollowerUserIdsForUser, getFollowedUserIdsForUser, getFollowSummaryForUser } from "@/lib/follows";
-import { getAccountSettingsByUserIds } from "@/lib/userSettings";
-import { getUserProfilePath } from "@/lib/userHandles";
+import { getFollowSummaryForUser } from "@/lib/follows";
 import ProfileActivityTabs from "./ProfileActivityTabs";
 import ProfileHeaderClient from "./ProfileHeaderClient";
-import type { ProfileFollowListItem } from "./ProfileFollowLists";
 import ProfileLoadError from "./ProfileLoadError";
 
 export const dynamic = "force-dynamic";
@@ -102,27 +99,6 @@ export default async function ProfilePage() {
   }));
   const initialVotes = Object.fromEntries(viewerVotes);
   const savedDealIds = savedDeals.map((savedDeal) => savedDeal.deal.id);
-  const [followerUserIds, followedUserIds] = await Promise.all([
-    getFollowerUserIdsForUser(user.id),
-    getFollowedUserIdsForUser(user.id),
-  ]);
-  const relationshipUserIds = [...followerUserIds, ...followedUserIds];
-  const relationshipSettings = await getAccountSettingsByUserIds(relationshipUserIds).catch(() => new Map());
-  const toFollowListItem = (relatedUserId: string): ProfileFollowListItem => {
-    const related = relationshipSettings.get(relatedUserId);
-    const displayName = related?.profile.displayName || "Deal Rakyat member";
-    const userName = related?.profile.userName || `member-${relatedUserId.slice(0, 6)}`;
-    return {
-      userId: relatedUserId,
-      displayName,
-      userName,
-      avatarUrl: related?.profile.avatarUrl || "",
-      href: related?.toggles.publicProfile === false ? "" : getUserProfilePath(relatedUserId, userName),
-    };
-  };
-  const followerProfiles = Array.from(followerUserIds, toFollowListItem);
-  const followingProfiles = Array.from(followedUserIds, toFollowListItem);
-
   return (
     <main className="home-page min-h-screen px-4 py-5 text-slate-900 sm:px-6 sm:py-6 lg:px-8">
       <div className="mx-auto grid max-w-[1200px] gap-4">
@@ -158,8 +134,6 @@ export default async function ProfilePage() {
             voteStorageScope={dealVoteViewerId}
             showStats
             showOwnerActions
-            followerProfiles={followerProfiles}
-            followingProfiles={followingProfiles}
             stats={{
               upvotesGiven: voteStats.upvotesGiven,
               upvotesReceived: voteStats.upvotesReceived,

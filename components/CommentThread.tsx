@@ -493,7 +493,10 @@ function CommentCard({
   };
 
   return (
-    <article className={depth === 0 ? "py-5 first:pt-0 last:pb-0" : "py-4"}>
+    <article
+      id={`comment-${comment.id}`}
+      className={`${depth === 0 ? "py-5 first:pt-0 last:pb-0" : "py-4"} scroll-mt-28`}
+    >
       <div className={`comment-body grid grid-cols-[40px_minmax(0,1fr)] gap-3 ${isDeleting ? "opacity-60" : ""}`}>
         {comment.authorProfileHref ? (
           <Link

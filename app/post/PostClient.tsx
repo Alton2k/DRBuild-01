@@ -52,21 +52,6 @@ type DealFormState = {
 export type DealFormInitialValues = Partial<DealFormState>;
 
 type FormErrors = Partial<Record<keyof DealFormState, string>>;
-type ScrapeStatus = "idle" | "fetching" | "found" | "partial" | "failed";
-
-type ScrapeData = {
-  title: string;
-  image: string;
-  description: string;
-  store?: string;
-  price?: string;
-};
-
-type ScrapeSummary = {
-  status: ScrapeStatus;
-  applied: string[];
-  missing: string[];
-};
 
 const initialFormState: DealFormState = {
   title: "",
@@ -148,12 +133,6 @@ async function compressImage(file: File) {
 
   return canvas.toDataURL("image/jpeg", 0.22);
 }
-
-const initialScrapeSummary: ScrapeSummary = {
-  status: "idle",
-  applied: [],
-  missing: [],
-};
 
 const steps = ["Link", "Details", "Description", "Price", "Review"];
 const finalStep = steps.length - 1;
@@ -1115,24 +1094,6 @@ function getDuplicateReasonLabel(reason: string) {
   return reason;
 }
 
-async function fetchScrapeData(url: string) {
-  const response = await fetch("/api/scrape", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ url }),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.error || "Failed to fetch product details");
-  }
-
-  return response.json() as Promise<ScrapeData>;
-}
-
 export default function PostClient({
   mode = "create",
   dealId = "",
@@ -1164,11 +1125,6 @@ export default function PostClient({
   const [form, setForm] = useState<DealFormState>(startingFormRef.current);
   const [errors, setErrors] = useState<FormErrors>({});
   const [currentStep, setCurrentStep] = useState(0);
-  const [isFetching, setIsFetching] = useState(false);
-  const [lastFetchedUrl, setLastFetchedUrl] = useState(() =>
-    mode === "edit" ? startingFormRef.current.url.trim() : "",
-  );
-  const [scrapeSummary, setScrapeSummary] = useState<ScrapeSummary>(initialScrapeSummary);
   const [categoryTouched, setCategoryTouched] = useState(() =>
     getInitialCategoryTouched(mode, startingFormRef.current.category),
   );
@@ -1192,8 +1148,8 @@ export default function PostClient({
   const discardButtonRef = useRef<HTMLButtonElement>(null);
   const discardReturnFocusRef = useRef<HTMLElement | null>(null);
   const failedImageRef = useRef<{ file: File; kind: "product" | "optional" } | null>(null);
-  const lastAutoAdvancedUrl = useRef("");
   const descriptionValueRef = useRef(startingFormRef.current.description);
+  const nextStepInFlightRef = useRef(false);
   const serverErrors = actionState.errors ?? {};
   const combinedErrors = { ...serverErrors, ...errors };
   const selectedCategory = getCategoryByName(form.category);
@@ -1230,7 +1186,6 @@ export default function PostClient({
     }
 
     if (field === "url") {
-      setScrapeSummary(initialScrapeSummary);
       setDuplicateCheck(null);
     }
 
@@ -1269,13 +1224,8 @@ export default function PostClient({
     setErrors((current) => ({ ...current, [field]: undefined }));
   };
 
-  const handleScrapedImageError = () => {
+  const handleRemoteImageError = () => {
     setForm((current) => ({ ...current, imageUrl: "" }));
-    setScrapeSummary((current) => ({
-      status: current.status === "failed" ? "failed" : "partial",
-      applied: current.applied.filter((field) => field !== "image"),
-      missing: current.missing.includes("image") ? current.missing : [...current.missing, "image"],
-    }));
   };
 
   const clearPostImages = useCallback(() => {
@@ -1292,91 +1242,7 @@ export default function PostClient({
     failedImageRef.current = null;
     setHasRetryableImage(false);
     setProcessingImageName("");
-    setScrapeSummary((current) => ({
-      ...current,
-      applied: current.applied.filter((field) => field !== "image"),
-      missing: current.missing.filter((field) => field !== "image"),
-    }));
   }, []);
-
-  const runFetchDetails = useCallback(async (url: string) => {
-    setIsFetching(true);
-    setScrapeSummary({ status: "fetching", applied: [], missing: [] });
-
-    try {
-      const data = await fetchScrapeData(url);
-      const missing = [
-        !data.image ? "image" : "",
-      ].filter(Boolean);
-      let appliedFields: string[] = [];
-
-      setForm((current) => {
-        const nextTitle = current.title;
-        const nextDescription = current.description;
-        const nextImageUrl = current.imageUrl || data.image;
-        appliedFields = [
-          !current.imageUrl && data.image ? "image" : "",
-        ].filter(Boolean);
-
-        const detectedValues = applyDetectedType(
-          {
-            ...current,
-            title: nextTitle,
-            description: nextDescription,
-            url,
-            imageUrl: nextImageUrl,
-          },
-          { categoryTouched },
-        );
-
-        return { ...detectedValues, url: current.url };
-      });
-
-      setErrors((current) => ({ ...current, title: undefined, description: undefined }));
-      setLastFetchedUrl(url);
-      setScrapeSummary({
-        status: missing.length ? "partial" : "found",
-        applied: appliedFields,
-        missing,
-      });
-    } catch {
-      setScrapeSummary({ status: "failed", applied: [], missing: [] });
-    } finally {
-      if (form.url.trim() === url && lastAutoAdvancedUrl.current !== url) {
-        const duplicateResult = await checkDuplicateDealAction({
-          title: form.title.trim(),
-          url,
-          store: form.store.trim() || "Online",
-          excludeDealId: mode === "edit" ? dealId : undefined,
-        });
-
-        if (duplicateResult.match) {
-          setDuplicateCheck(duplicateResult);
-          setIsFetching(false);
-          return;
-        }
-
-        lastAutoAdvancedUrl.current = url;
-        setErrors((current) => ({ ...current, url: undefined }));
-        setCurrentStep((step) => (step === 0 ? 1 : step));
-        scrollToTop();
-      }
-      setIsFetching(false);
-    }
-  }, [categoryTouched, dealId, form.store, form.title, form.url, mode]);
-
-  useEffect(() => {
-    const url = form.url.trim();
-    if (!url || !isValidUrl(url) || url === lastFetchedUrl) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void runFetchDetails(url);
-    }, 650);
-
-    return () => window.clearTimeout(timer);
-  }, [form.url, lastFetchedUrl, runFetchDetails]);
 
   useEffect(() => {
     try {
@@ -1447,45 +1313,6 @@ export default function PostClient({
   }, [actionState.ok, formIsDirty]);
 
   useEffect(() => {
-    const title = form.title.trim();
-    const url = form.url.trim();
-    const store = form.store.trim() || "Online";
-
-    if (!isValidUrl(url)) {
-      return;
-    }
-
-    let cancelled = false;
-    const timer = window.setTimeout(async () => {
-      setIsCheckingDuplicate(true);
-      try {
-        const result = await checkDuplicateDealAction({
-          title,
-          url,
-          store,
-          excludeDealId: mode === "edit" ? dealId : undefined,
-        });
-        if (!cancelled) {
-          setDuplicateCheck(result.match ? result : null);
-        }
-      } catch {
-        if (!cancelled) {
-          setDuplicateCheck(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsCheckingDuplicate(false);
-        }
-      }
-    }, 750);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [dealId, form.title, form.url, form.store, mode]);
-
-  useEffect(() => {
     if (!actionState.message) return;
 
     messageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1514,10 +1341,7 @@ export default function PostClient({
       descriptionValueRef.current = mode === "edit" ? startingFormRef.current.description : initialFormState.description;
       setErrors({});
       setCurrentStep(0);
-      setLastFetchedUrl("");
-      setScrapeSummary(initialScrapeSummary);
       setDuplicateCheck(null);
-      lastAutoAdvancedUrl.current = "";
       setCategoryTouched(false);
       window.localStorage.removeItem(draftStorageKey);
     }, 0);
@@ -1599,7 +1423,7 @@ export default function PostClient({
     scrollToTop();
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const latestForm =
       currentStep === 2
         ? { ...form, description: descriptionValueRef.current }
@@ -1620,17 +1444,40 @@ export default function PostClient({
       setForm(latestForm);
     }
 
-    if (currentStep === 0 && isCheckingDuplicate) {
-      scrollToTop();
-      return;
-    }
+    if (currentStep === 0) {
+      if (nextStepInFlightRef.current) return;
+      nextStepInFlightRef.current = true;
+      setIsCheckingDuplicate(true);
+      try {
+        const result = await checkDuplicateDealAction({
+          title: latestForm.title.trim(),
+          url: latestForm.url.trim(),
+          store: latestForm.store.trim() || "Online",
+          excludeDealId: mode === "edit" ? dealId : undefined,
+        });
+        setDuplicateCheck(result.match ? result : null);
 
-    if (currentStep === 0 && duplicateCheck?.match) {
-      setErrors((current) => ({
-        ...current,
-        url: "This deal already exists.",
-      }));
-      scrollToTop();
+        if (result.match) {
+          setErrors((current) => ({
+            ...current,
+            url: "This deal already exists.",
+          }));
+          scrollToTop();
+          nextStepInFlightRef.current = false;
+          return;
+        }
+      } catch {
+        setDuplicateCheck(null);
+      } finally {
+        setIsCheckingDuplicate(false);
+      }
+
+      setErrors({});
+      window.setTimeout(() => {
+        setCurrentStep((step) => Math.min(step + 1, finalStep));
+        scrollToTop();
+        nextStepInFlightRef.current = false;
+      }, 0);
       return;
     }
 
@@ -1696,7 +1543,7 @@ export default function PostClient({
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (currentStep < finalStep) {
       event.preventDefault();
-      handleNext();
+      void handleNext();
       return;
     }
 
@@ -1845,7 +1692,7 @@ export default function PostClient({
   const discountLabel =
     originalPrice > currentPrice && discountAmount > 0 ? `${discountPercent}% off` : "";
   const hasDuplicateMatch = Boolean(duplicateCheck?.match);
-  const canSubmit = !isPending && !isFetching && !hasDuplicateMatch;
+  const canSubmit = !isPending && !hasDuplicateMatch;
   const successOutcome = mode === "edit"
     ? { label: "Changes saved", title: "Deal updated successfully", description: actionState.message, tone: "amber" }
     : getSubmissionOutcome(actionState.message);
@@ -1860,10 +1707,7 @@ export default function PostClient({
   }).format(calendarMonth);
   const selectedHour = selectedExpirationDate?.getHours() ?? 9;
   const selectedMinute = selectedExpirationDate?.getMinutes() ?? 0;
-  const linkCheckingLabel =
-    scrapeSummary.status === "fetching" || (currentStep === 0 && isCheckingDuplicate)
-      ? "Checking…"
-      : "";
+  const linkCheckingLabel = currentStep === 0 && isCheckingDuplicate ? "Checking…" : "";
 
   return (
     <main className="post-page min-h-screen px-4 py-10 sm:px-6 lg:px-8">
@@ -2093,7 +1937,7 @@ export default function PostClient({
                             width={1200}
                             height={900}
                             className="h-full w-full object-contain"
-                            onError={form.imageUrl ? handleScrapedImageError : undefined}
+                            onError={form.imageUrl ? handleRemoteImageError : undefined}
                           />
                         </div>
                       ) : (
@@ -2643,7 +2487,7 @@ export default function PostClient({
                               width={1200}
                               height={900}
                               className="max-h-52 w-full rounded-lg object-contain"
-                              onError={activeReviewPhotoIndex === 0 && form.imageUrl ? handleScrapedImageError : undefined}
+                              onError={activeReviewPhotoIndex === 0 && form.imageUrl ? handleRemoteImageError : undefined}
                             />
                             {submittedGalleryUrls.length > 1 ? (
                               <div className="post-review-gallery mt-4 grid w-full grid-cols-4 gap-2">
@@ -2806,9 +2650,9 @@ export default function PostClient({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleNext();
+                      void handleNext();
                     }}
-                    disabled={isFetching || isPending || (currentStep === 0 && (isCheckingDuplicate || hasDuplicateMatch))}
+                    disabled={isPending || (currentStep === 0 && (isCheckingDuplicate || hasDuplicateMatch))}
                     className="post-primary-button inline-flex h-12 items-center justify-center rounded-full px-8 text-sm font-bold shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Next

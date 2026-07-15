@@ -3319,6 +3319,22 @@ html {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.home-marketplace-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.home-introduction {
+  order: 1;
+}
+
+.home-deal-feed {
+  order: 2;
+}
+
+.home-secondary-content {
+  order: 3;
+}
+
 .profile-deal-grid {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -3330,7 +3346,31 @@ html {
   }
 }
 
-@media (min-width: 1100px) {
+@media (min-width: 900px) {
+  .home-deal-grid,
+  .profile-deal-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .home-introduction {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .home-secondary-content {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .home-deal-feed {
+    grid-column: 1 / span 2;
+    grid-row: 2;
+  }
+}
+
+@media (min-width: 1180px) {
   .home-deal-grid,
   .profile-deal-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3340,6 +3380,7 @@ html {
 .home-deal-card {
   position: relative;
   isolation: isolate;
+  container-type: inline-size;
   background: #ffffff;
   border-color: var(--line);
 }
@@ -3492,7 +3533,21 @@ html {
 }
 
 .home-deal-card-actions {
+  grid-template-columns: repeat(3, minmax(44px, 1fr));
+  gap: 0.25rem;
+  justify-items: center;
   border-color: #e2e8f0;
+}
+
+.home-deal-card-time {
+  grid-column: 1 / -1;
+  padding-top: 0.125rem;
+}
+
+@container (min-width: 310px) {
+  .home-deal-card-actions {
+    grid-template-columns: repeat(6, minmax(44px, 1fr));
+  }
 }
 
 .home-deal-card-actions .deal-vote-control-neutral {
@@ -4204,6 +4259,65 @@ html {
 .deal-image-carousel-thumbs {
   max-height: 336px;
   scrollbar-width: thin;
+}
+
+@media (max-width: 639px) {
+  .deal-detail-media {
+    margin-inline: -1rem;
+  }
+
+  .deal-image-carousel {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .deal-image-carousel-stage {
+    grid-row: 1;
+  }
+
+  .deal-image-carousel-stage-size {
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  .deal-image-carousel-main-image {
+    border-radius: 0;
+  }
+
+  .deal-image-carousel-thumbs {
+    grid-row: 2;
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 1rem 0.5rem;
+    scroll-padding-inline: 1rem;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+
+  .deal-image-carousel-thumb {
+    width: 3.5rem;
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 479px) {
+  .profile-pagination-edge,
+  .profile-pagination-page {
+    display: none;
+  }
+
+  .profile-pagination-summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+  }
+
+  :root[data-theme="dark"] .profile-pagination-summary {
+    color: #cbd5e1;
+  }
 }
 
 :root[data-theme="dark"] .deal-detail-page {

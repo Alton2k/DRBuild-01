@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { saveAccountSettingsAction } from "./actions";
+import Link from "next/link";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { changePasswordAction, saveAccountSettingsAction } from "./actions";
 import {
   AccountSettings,
   SettingsTheme,
@@ -41,14 +42,16 @@ type SaveStatus = {
   state: "idle" | "pending" | "success" | "error";
   message: string;
 };
+type PasswordField = "currentPassword" | "password" | "passwordConfirmation" | "form";
 
 const avatarMaxSize = 320;
+const avatarMaxFileBytes = 5 * 1024 * 1024;
 const avatarDataUrlLimit = 450_000;
 const avatarImageQuality = 0.82;
 const themeStorageKey = "dealmy_theme";
 const themeModeChangedEventName = "dealmy:theme-mode-changed";
 
-const notificationToggles: { key: ToggleKey; label: string; description: string }[] = [
+const notificationToggles: { key: ToggleKey; label: string; description: string; available?: boolean }[] = [
   {
     key: "newComments",
     label: "New comments on my deals",
@@ -71,13 +74,15 @@ const notificationToggles: { key: ToggleKey; label: string; description: string 
   },
   {
     key: "weeklySummary",
-    label: "Weekly summary",
-    description: "A tidy recap of deals, votes, and community activity.",
+    label: "Weekly summary — unavailable",
+    description: "Email summaries stay off until delivery, consent, and unsubscribe controls are configured.",
+    available: false,
   },
   {
     key: "marketingEmails",
-    label: "Marketing emails",
-    description: "Product news, partner campaigns, and seasonal promotions.",
+    label: "Marketing emails — unavailable",
+    description: "Marketing email stays off until delivery, consent, and unsubscribe controls are configured.",
+    available: false,
   },
 ];
 
@@ -360,6 +365,15 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
   const [themeSaveStatus, setThemeSaveStatus] = useState<SaveStatus>({ state: "idle", message: "" });
   const [toggleSaveStatus, setToggleSaveStatus] = useState<SaveStatus>({ state: "idle", message: "" });
   const [pendingToggleKey, setPendingToggleKey] = useState<ToggleKey | null>(null);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    password: "",
+    passwordConfirmation: "",
+  });
+  const [passwordStatus, setPasswordStatus] = useState<SaveStatus & { field?: PasswordField }>({
+    state: "idle",
+    message: "",
+  });
 
   const initials = getInitials(form.displayName, form.email);
   const joinedSince = useMemo(() => formatJoinedSince(user.joinedAt), [user.joinedAt]);
@@ -454,12 +468,23 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
     const file = files?.[0];
 
     if (file) {
+      if (!file.type.startsWith("image/")) {
+        setProfileSaveStatus({ state: "error", message: "Choose a JPG, PNG, GIF, or other image file." });
+        return;
+      }
+
+      if (file.size > avatarMaxFileBytes) {
+        setProfileSaveStatus({ state: "error", message: "Profile picture must be 5 MB or smaller." });
+        return;
+      }
+
       try {
         const avatarUrl = await createCompressedAvatarDataUrl(file);
 
         updateForm("avatarUrl", avatarUrl);
-      } catch (error) {
-        console.error(error);
+        setProfileSaveStatus({ state: "idle", message: "" });
+      } catch {
+        setProfileSaveStatus({ state: "error", message: "Could not process that image. Try a different file." });
       }
     }
   }
@@ -507,6 +532,20 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
     updateForm("theme", result.settings.theme);
     applyTheme(result.settings.theme);
     setThemeSaveStatus({ state: "success", message: "Appearance saved." });
+  }
+
+  async function handlePasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordStatus({ state: "pending", message: "Changing password…" });
+    const result = await changePasswordAction(passwordForm);
+
+    if (!result.ok) {
+      setPasswordStatus({ state: "error", field: result.field, message: result.message });
+      return;
+    }
+
+    setPasswordForm({ currentPassword: "", password: "", passwordConfirmation: "" });
+    setPasswordStatus({ state: "success", message: result.message });
   }
 
   return (
@@ -581,6 +620,18 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                           onChange={(event) => handleAvatarFiles(event.target.files)}
                         />
                       </label>
+                      {form.avatarUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateForm("avatarUrl", "");
+                            setProfileSaveStatus({ state: "idle", message: "" });
+                          }}
+                          className="mt-2 inline-flex min-h-10 items-center justify-center rounded-md px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-500/15"
+                        >
+                          Remove picture
+                        </button>
+                      ) : null}
                       <p className="mt-3 text-xs leading-5 text-slate-500">JPG, PNG or GIF. Max 5MB.</p>
                     </div>
                   </div>
@@ -710,13 +761,21 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                 </div>
 
                 <div>
+                  <div className="mb-2 flex justify-end">
+                    <Link
+                      href="/notifications"
+                      className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15"
+                    >
+                      Open notification inbox
+                    </Link>
+                  </div>
                   {notificationToggles.map((item) => (
                     <NotificationToggle
                       key={item.key}
-                      enabled={toggles[item.key]}
+                      enabled={item.available === false ? false : toggles[item.key]}
                       label={item.label}
                       description={item.description}
-                      disabled={pendingToggleKey !== null}
+                      disabled={pendingToggleKey !== null || item.available === false}
                       onChange={(enabled) => updateToggle(item.key, enabled)}
                     />
                   ))}
@@ -782,12 +841,62 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                 </div>
 
                 <div className="grid gap-1 py-2">
-                  <div className="flex flex-col gap-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <form className="grid max-w-xl gap-4 py-2.5" onSubmit={handlePasswordChange} noValidate>
                     <div>
-                      <p className="text-sm font-black text-slate-950">Password</p>
-                      <p className="mt-1 text-sm text-slate-500">Password changes and recovery are not available in the current first-party account workflow.</p>
+                      <p className="text-sm font-black text-slate-950">Change password</p>
+                      <p className="mt-1 text-sm leading-5 text-slate-500">
+                        Use at least 8 characters with a number and symbol. Forgotten-password recovery remains unavailable until email delivery is configured.
+                      </p>
                     </div>
-                  </div>
+                    {([
+                      ["currentPassword", "Current password", "current-password"],
+                      ["password", "New password", "new-password"],
+                      ["passwordConfirmation", "Confirm new password", "new-password"],
+                    ] as const).map(([field, label, autoComplete]) => {
+                      const error = passwordStatus.state === "error" && passwordStatus.field === field
+                        ? passwordStatus.message
+                        : "";
+                      const errorId = `${field}-error`;
+
+                      return (
+                        <label key={field} className="grid gap-2 text-sm font-bold text-slate-950">
+                          <span>{label}</span>
+                          <input
+                            type="password"
+                            name={field}
+                            value={passwordForm[field]}
+                            autoComplete={autoComplete}
+                            aria-invalid={Boolean(error)}
+                            aria-describedby={error ? errorId : undefined}
+                            disabled={passwordStatus.state === "pending"}
+                            onChange={(event) => {
+                              setPasswordForm((current) => ({ ...current, [field]: event.target.value }));
+                              if (passwordStatus.state === "error") setPasswordStatus({ state: "idle", message: "" });
+                            }}
+                            className="post-form-field min-h-11 w-full rounded-md border border-slate-200 px-4 text-sm font-normal text-slate-950 outline-none transition focus-visible:border-[#dc115e] focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 disabled:cursor-not-allowed disabled:opacity-60"
+                          />
+                          {error ? <span id={errorId} className="text-xs font-semibold text-rose-600">{error}</span> : null}
+                        </label>
+                      );
+                    })}
+                    {passwordStatus.message && (passwordStatus.field === "form" || passwordStatus.state === "success" || passwordStatus.state === "pending") ? (
+                      <p
+                        className={`text-sm font-semibold ${passwordStatus.state === "error" ? "text-rose-600" : passwordStatus.state === "success" ? "text-emerald-700" : "text-slate-600"}`}
+                        role="status"
+                      >
+                        {passwordStatus.message}
+                      </p>
+                    ) : null}
+                    <div>
+                      <button
+                        type="submit"
+                        disabled={passwordStatus.state === "pending"}
+                        className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#dc115e] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#c80f55] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {passwordStatus.state === "pending" ? "Changing…" : "Change password"}
+                      </button>
+                    </div>
+                  </form>
 
                   <div className="settings-danger-note mt-2 border-t border-rose-200 py-4 text-sm leading-6 text-rose-800">
                     <p className="font-black text-rose-950">Account deactivation and deletion</p>

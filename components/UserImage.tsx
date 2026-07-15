@@ -9,7 +9,7 @@ type UserImageProps = ImgHTMLAttributes<HTMLImageElement> & {
 };
 
 /**
- * Renders arbitrary scraped or uploaded images that cannot be safely allowlisted
+ * Renders user-provided or stored images that cannot be safely allowlisted
  * for next/image optimization ahead of time.
  */
 export default function UserImage({ alt, ...props }: UserImageProps) {

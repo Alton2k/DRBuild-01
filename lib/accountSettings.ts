@@ -9,6 +9,8 @@ export const profileUserNameMinLength = usernameMinLength;
 export const profileUserNameLimit = usernameLimit;
 export const profileDisplayNameLimit = displayNameLimit;
 export const profileBioLimit = 72;
+export const passwordMinLength = 8;
+export const passwordMaxBytes = 72;
 
 export type SettingsTheme = "dark" | "light" | "system";
 
@@ -109,4 +111,66 @@ export function parseStoredToggles(raw: string | null) {
 
 export function normalizeTheme(value: unknown): SettingsTheme {
   return value === "dark" || value === "light" || value === "system" ? value : "system";
+}
+
+export type PasswordChangeValidation =
+  | { ok: true; currentPassword: string; password: string; passwordConfirmation: string }
+  | { ok: false; field: "currentPassword" | "password" | "passwordConfirmation"; message: string };
+
+export function validatePasswordChange(input: {
+  currentPassword?: unknown;
+  password?: unknown;
+  passwordConfirmation?: unknown;
+}): PasswordChangeValidation {
+  const currentPassword = typeof input.currentPassword === "string" ? input.currentPassword : "";
+  const password = typeof input.password === "string" ? input.password : "";
+  const passwordConfirmation =
+    typeof input.passwordConfirmation === "string" ? input.passwordConfirmation : "";
+
+  if (!currentPassword) {
+    return { ok: false, field: "currentPassword", message: "Enter your current password." };
+  }
+
+  if (password.length < passwordMinLength) {
+    return {
+      ok: false,
+      field: "password",
+      message: `New password must be at least ${passwordMinLength} characters.`,
+    };
+  }
+
+  if (new TextEncoder().encode(password).length > passwordMaxBytes) {
+    return {
+      ok: false,
+      field: "password",
+      message: `New password must be ${passwordMaxBytes} bytes or fewer.`,
+    };
+  }
+
+  if (!/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    return { ok: false, field: "password", message: "New password must include a number and a symbol." };
+  }
+
+  if (password === currentPassword) {
+    return { ok: false, field: "password", message: "New password must be different from your current password." };
+  }
+
+  if (passwordConfirmation !== password) {
+    return { ok: false, field: "passwordConfirmation", message: "New passwords do not match." };
+  }
+
+  return { ok: true, currentPassword, password, passwordConfirmation };
+}
+
+export function assertImmutableProfileHandle(currentHandle: string, requestedHandle: unknown) {
+  if (typeof requestedHandle !== "string") {
+    return;
+  }
+
+  const current = currentHandle.trim().toLocaleLowerCase();
+  const requested = requestedHandle.trim().replace(/^@+/, "").toLocaleLowerCase();
+
+  if (current && requested !== current) {
+    throw new Error("Your profile handle cannot be changed.");
+  }
 }

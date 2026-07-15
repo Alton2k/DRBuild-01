@@ -9,7 +9,6 @@ Frontend:
 - Next.js `16.2.4`
 - React `19.2.4`
 - Tailwind CSS `4`
-- Playwright `1.59.1` for product metadata scraping
 
 Backend:
 
@@ -30,7 +29,7 @@ Auth:
 - Searchable and paginated deal feed with category and subcategory filters
 - Feed ranking by community score, comment count, or newest deals
 - Malaysia-time daily, weekly, and monthly ranking periods
-- Product metadata scraping with Playwright during deal submission
+- Manual deal submission with product links, details, prices, and user-provided photos
 - Deal image galleries, shipping cost, expiration time, and rich descriptions
 - Automated duplicate, link safety, content risk, and moderation checks
 - Anonymous deal voting with transactional score updates
@@ -104,12 +103,14 @@ lib/auth.ts
 lib/deals.ts
 lib/comments.ts
 lib/savedDeals.ts
+lib/notifications.ts
 lib/userSettings.ts
 lib/follows.ts
 lib/strapi.ts
 backend/src/api/deal/content-types/deal/schema.json
 backend/src/api/saved-deal/content-types/saved-deal/schema.json
 backend/src/api/user-setting/content-types/user-setting/schema.json
+backend/src/api/notification/content-types/notification/schema.json
 backend/src/api/follow/content-types/follow/schema.json
 backend/src/index.ts
 ```
@@ -154,17 +155,6 @@ Return to the root:
 ```bash
 cd ..
 ```
-
-Install Playwright Chromium for the product scraper:
-
-```bash
-npx playwright install chromium
-```
-
-This browser install is for local development. Vercel uses the pinned
-`@sparticuz/chromium` package and includes its serverless Chromium assets in the
-`/api/scrape` function bundle, so no separate browser-install command is needed
-during deployment.
 
 ## Environment Variables
 
@@ -377,6 +367,7 @@ Deal Report
 Deal Category
 Saved Deal
 User Setting
+Notification
 Follow
 ```
 
@@ -463,8 +454,8 @@ Important behavior:
 - Duplicate votes, reports, and saved deals are protected by database constraints.
 - Comments support replies, likes, inline owner editing, an edited indicator, and ownership-checked deletion.
 - Profile comment history exhausts backend pagination and links available records to the relevant discussion; missing, rejected, pending, and expired deals are labelled honestly.
-- Deal owners can edit submissions from their profile. The form preserves the saved category and subcategory instead of re-scraping or auto-classifying an existing deal; the server rechecks ownership and validation, non-admin edits return to pending moderation, and admin-owner edits preserve their current status.
-- Account deactivation and deletion controls are intentionally withheld with honest settings copy until their complete first-party identity and data-retention workflows are implemented.
+- Deal owners can edit submissions from their profile. The form preserves the saved category and subcategory instead of auto-classifying an existing deal; the server rechecks ownership and validation, non-admin edits return to pending moderation, and admin-owner edits preserve their current status.
+- Account deactivation and deletion controls remain withheld until revocable sessions, recent-authentication proof, retention/anonymisation rules, and recovery/audit policy are implemented.
 - Comment reports are stored separately from comments. A unique report key prevents the same viewer from reporting one comment twice, while moderation shows report counts and distinct reasons; successful moderation actions refresh the server-derived dashboard totals as well as the affected table row.
 - Comment and reply forms show live character counts, warn before page unload, preserve closed reply drafts, surface like failures, and use focus-restoring application dialogs instead of native browser confirmations.
 - Comment deletion removes the selected subtree deepest-first, cleans associated report records, and then resynchronizes the stored deal comment count; focused tests cover ordering and corrupt-cycle safety.
@@ -472,7 +463,8 @@ Important behavior:
 - Deal posting and editing save bounded, account-scoped drafts in the current browser for up to 30 days, restore them after refresh, warn on reload or in-app navigation, and clear saved data after submission or confirmed discard.
 - Deal images show a processing state, retain actionable failures, support same-file retry after processing errors, and expose removal controls for every selected image.
 - Public Terms, Privacy, Community Rules, Affiliate Disclosure, About, and Contact pages describe current first-party behavior without draft labels or fake addresses. General support and privacy requests use `support@dealrakyat.my`; formal takedown and legal notices use `legal@dealrakyat.my`.
-- Password change/recovery and destructive account actions are not presented as working controls while those out-of-scope identity workflows are unavailable.
+- Signed-in users can change their password with current-password verification, strength checks, best-effort per-instance throttling, and current-session refresh. A shared account-and-IP limiter is still required before treating this as distributed abuse protection. Forgotten-password recovery remains unavailable until email delivery is configured.
+- New-comment, reply, deal-approval, and saved-deal-update preferences drive the authenticated `/notifications` inbox. Weekly summaries and marketing email stay disabled until delivery, consent, and unsubscribe controls exist.
 - Signed-in users can save deals and view them from `/profile`.
 - Voting, commenting, and reporting include basic abuse rate limiting.
 - Signed-in users can follow public member profiles when that member allows followers.
@@ -504,9 +496,10 @@ Settings include:
 - Avatar, editable display name, permanent public `@username`, and short bio
 - Light, dark, or system theme preference
 - Notification preference toggles
+- In-app notification inbox and read/unread state for comments, replies, deal approvals, and saved-deal updates
 - Privacy toggles for public profile visibility, join date, activity stats, saved deals, and followers
 
-Profile settings are stored in the Strapi `User Setting` content type and handled by:
+Profile settings are stored in the Strapi `User Setting` content type. In-app notifications are stored in the private `Notification` content type and delivered only through authenticated server helpers that enforce recipient ownership, preferences, and deduplication.
 
 ```text
 app/settings/page.tsx
@@ -543,6 +536,7 @@ Main application routes:
 /profile      Posted deals, saved deals, comments, and account details
 /profile/[id] Public member profile
 /settings     Account profile, appearance, notification, privacy, and security settings
+/notifications Authenticated in-app notification inbox
 /admin        Moderation dashboard
 ```
 
@@ -602,6 +596,18 @@ Or run the combined root check:
 npm run verify
 ```
 
+GitHub Actions runs this combined check for every pull request and every push to
+`main`. The workflow is defined in `.github/workflows/verify.yml`; it installs
+the root and backend dependencies from their lockfiles with Node.js 24.x, then
+runs `npm run verify`. To reproduce the CI verification locally, use Node.js
+24.x and run from the project root:
+
+```bash
+npm ci
+npm ci --prefix backend
+npm run verify
+```
+
 Expected result:
 
 - Next.js compiles successfully.
@@ -638,7 +644,7 @@ Responsive browser QA should cover 320px, 360px, 390px, 430px, 768px, landscape 
 
 The 13 July 2026 production-browser audit covered every first-party public and authenticated route at 320px, 360px, 390px, 430px, 768px, 740×360 landscape, and 1280px desktop. It also covered the public member profile, light and dark themes, a 200% reflow approximation, keyboard member search, mobile-menu scrolling and focus return, short-landscape confirmation dialogs, reduced-height posting, stacked tablet moderation, loading states, and temporary-draft cleanup. The audited routes had no unintended page-level horizontal overflow or related browser-console errors. Final release QA should still include one pass on physical iOS Safari and Android Chrome for real safe-area, software-keyboard, file-picker, touch-pointer, and browser-zoom behavior that desktop emulation cannot reproduce exactly.
 
-Focused pure-helper regression tests use Node's built-in test runner and run with `npm test`. They currently cover comment validation boundaries, ownership, duplicate-submission keys and create-response relation fallback, safe comment-tree deletion, deal-description limits, revision-aware edit drafts, and preservation of stored deal categories during editing. Playwright is installed because the metadata scraper uses it at runtime; repeatable automated authenticated E2E tests still need a dedicated isolated user/database fixture.
+Focused pure-helper regression tests use Node's built-in test runner and run with `npm test`. They currently cover comment validation boundaries, ownership, duplicate-submission keys and create-response relation fallback, safe comment-tree deletion, deal-description limits, revision-aware edit drafts, and preservation of stored deal categories during editing. Repeatable automated authenticated E2E tests still need a dedicated isolated user/database fixture.
 
 Recommended staged test setup:
 
@@ -683,18 +689,6 @@ Fix:
 
 ```powershell
 npm.cmd run backend:dev
-```
-
-Playwright missing browser:
-
-```text
-browserType.launch: Executable doesn't exist
-```
-
-Fix:
-
-```powershell
-npx.cmd playwright install chromium
 ```
 
 Deal saved but not showing on homepage:
@@ -791,11 +785,6 @@ After Strapi is healthy, open its `/admin` page and create or confirm the produc
 ### 2. Next.js on Vercel
 
 Import the same repository into Vercel. Keep the project root at `/`; Vercel detects and builds Next.js directly.
-
-The product scraper runs as a Node.js function with a 45-second route limit and
-launches the Chromium binary packaged by `@sparticuz/chromium`. Keep that package
-version aligned with the Chromium browser version declared by the pinned
-Playwright release when upgrading either dependency.
 
 Set these Vercel variables:
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatMalaysiaDateTime } from "@/lib/formatters";
 
 export type UserTrustStatus = "admin" | "trusted" | "needs-review" | "new-user" | "legacy";
 
@@ -36,17 +37,6 @@ const statusStyles: Record<UserTrustStatus, string> = {
   "new-user": "border-sky-200 bg-sky-50 text-sky-800",
   legacy: "border-slate-200 bg-slate-50 text-slate-600",
 };
-
-function formatDate(timestamp: string) {
-  return new Intl.DateTimeFormat("en-MY", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Kuala_Lumpur",
-  }).format(new Date(timestamp));
-}
 
 function newestFirst(firstUser: UserOverviewRow, secondUser: UserOverviewRow) {
   return (
@@ -111,25 +101,22 @@ export default function UserOverviewTable({ users }: UserOverviewTableProps) {
   ];
 
   return (
-    <section id="users" className="space-y-6 border-t border-slate-200 pt-6 sm:pt-8">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <section id="users" className="settings-section-divider scroll-mt-32 space-y-6 py-8">
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-            User signals
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-950">Submitter overview</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          <h2 className="text-3xl font-black tracking-tight text-slate-950">Users</h2>
+          <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">
             Track who is becoming trusted, who still needs manual review, and where moderation attention is building up.
           </p>
         </div>
 
-        <label className="grid gap-2 text-sm font-semibold text-slate-700">
+        <label className="grid gap-2 self-end text-sm font-semibold text-slate-700 lg:justify-self-end">
           <span className="sr-only">Search users</span>
           <input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="Search users"
-            className="min-w-[240px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-slate-500 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-slate-200"
+            className="min-h-11 w-full rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-normal text-slate-950 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-[#dc115e] focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 sm:min-w-[240px]"
           />
         </label>
       </div>
@@ -144,7 +131,7 @@ export default function UserOverviewTable({ users }: UserOverviewTableProps) {
               key={status}
               type="button"
               onClick={() => setActiveStatus(status)}
-              className={`admin-filter-control inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
+              className={`admin-filter-control inline-flex min-h-11 items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
                 isActive
                   ? "border-slate-900 bg-slate-950 text-white shadow-sm"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
@@ -216,7 +203,7 @@ export default function UserOverviewTable({ users }: UserOverviewTableProps) {
                 </p>
                 <p className="text-sm text-slate-600">
                   <span className="lg:hidden text-slate-500">Latest: </span>
-                  {formatDate(user.latestSubmissionAt)}
+                  {formatMalaysiaDateTime(user.latestSubmissionAt)}
                 </p>
               </article>
             ))

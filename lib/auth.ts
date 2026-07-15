@@ -2,6 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { getStrapiAccessHeaders, getStrapiToken, getStrapiUrl } from "./strapi";
+import { validatePasswordChange } from "./accountSettings";
 
 export const strapiAuthCookieName = "dealmy_strapi_jwt";
 
@@ -177,4 +178,71 @@ export async function requireAdminUser() {
   }
 
   return user;
+}
+
+export type ChangePasswordResult =
+  | { ok: true; jwt: string }
+  | {
+      ok: false;
+      field: "currentPassword" | "password" | "passwordConfirmation" | "form";
+      message: string;
+    };
+
+export async function changeCurrentUserPassword(input: {
+  currentPassword?: unknown;
+  password?: unknown;
+  passwordConfirmation?: unknown;
+}): Promise<ChangePasswordResult> {
+  const validated = validatePasswordChange(input);
+
+  if (!validated.ok) {
+    return validated;
+  }
+
+  const jwt = await getStrapiJwt();
+
+  if (!jwt) {
+    return { ok: false, field: "form", message: "You must be signed in." };
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${getStrapiUrl()}/api/auth/change-password`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
+        ...getStrapiAccessHeaders(),
+      },
+      body: JSON.stringify({
+        currentPassword: validated.currentPassword,
+        password: validated.password,
+        passwordConfirmation: validated.passwordConfirmation,
+      }),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, field: "form", message: "Could not connect to the account service." };
+  }
+
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message = typeof body?.error?.message === "string" ? body.error.message : "Could not change your password.";
+    const currentPasswordError = /current password|invalid/i.test(message);
+
+    return {
+      ok: false,
+      field: currentPasswordError ? "currentPassword" : "form",
+      message: currentPasswordError ? "Your current password is incorrect." : message,
+    };
+  }
+
+  if (typeof body?.jwt !== "string" || !body.jwt) {
+    return { ok: false, field: "form", message: "The account service did not return a new session." };
+  }
+
+  return { ok: true, jwt: body.jwt };
 }

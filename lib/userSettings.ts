@@ -9,8 +9,7 @@ import {
   defaultToggles,
   normalizeTheme,
   displayNameLimit,
-  usernameLimit,
-  usernameMinLength,
+  assertImmutableProfileHandle,
 } from "./accountSettings";
 import {
   StrapiEntity,
@@ -231,46 +230,6 @@ function isUniqueConstraintError(error: unknown) {
     (error.status === 400 || error.status === 409) &&
     /unique|duplicate/i.test(error.message)
   );
-}
-
-async function assertProfileUserNameAvailable(userId: string, username: string) {
-  const normalizedProfileUserName = normalizeUserHandle(username);
-
-  if (normalizedProfileUserName.length < usernameMinLength) {
-    throw new UserSettingsValidationError(`Handle must be at least ${usernameMinLength} characters long.`);
-  }
-
-  if (normalizedProfileUserName.length > usernameLimit) {
-    throw new UserSettingsValidationError(`Handle must be ${usernameLimit} characters or fewer.`);
-  }
-
-  if (!isValidUserHandle(normalizedProfileUserName)) {
-    throw new UserSettingsValidationError("Handle can use letters, numbers, dots, and underscores only.");
-  }
-
-  const query = new URLSearchParams();
-  query.set("filters[username][$eqi]", normalizedProfileUserName);
-  query.set("pagination[pageSize]", "10");
-
-  const response = await strapiRequest<StrapiListResponse<StrapiUserSetting>>("/api/user-settings", {
-    query,
-    requireToken: true,
-  });
-
-  const normalizedComparableName = normalizedProfileUserName.toLocaleLowerCase();
-  const matchingOtherUser = response.data.some((setting) => {
-    const fields = getStrapiEntityFields(setting);
-
-    return (
-      fields.userId !== userId &&
-      typeof fields.username === "string" &&
-      fields.username.trim().toLocaleLowerCase() === normalizedComparableName
-    );
-  });
-
-  if (matchingOtherUser) {
-    throw new UserSettingsValidationError("Handle is already taken.");
-  }
 }
 
 async function getProfileUserNameOwner(username: string) {
@@ -531,11 +490,9 @@ export async function saveAccountSettingsForUser(userId: string, patch: AccountS
   const currentSettings = existing
     ? normalizeSettings(existingFields ?? {}, displayName)
     : createDefaultAccountSettings(displayName, createUserHandleCandidate(displayName));
-  const nextSettings = mergeSettings(currentSettings, patch);
 
-  if (patch.profile && typeof patch.profile.userName === "string") {
-    await assertProfileUserNameAvailable(userId, nextSettings.profile.userName);
-  }
+  assertImmutableProfileHandle(currentSettings.profile.userName, patch.profile?.userName);
+  const nextSettings = mergeSettings(currentSettings, patch);
 
   const data = serializeSettingsPatch(userId, nextSettings, patch, {
     includeUserName: !existing || !existingFields?.username,
