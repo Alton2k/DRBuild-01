@@ -507,6 +507,57 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
   const hasPreviousPage = pagination.page > 1;
   const hasNextPage = pagination.page < pagination.pageCount;
   const ambientGradientStyle = createAmbientGradientStyle();
+  const dealCheckPanel = (
+    <section className="home-secondary-content min-w-0 py-2 sm:py-6">
+      <div className="deal-check-card rounded-3xl border p-5 shadow-sm">
+        <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-3 border-b border-slate-200 pb-3">
+          <span className="flex h-12 w-12 items-center justify-center text-[#dc115e]">
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5">
+              <path d="M22 12h-4l-3 8-6-16-3 8H2" />
+            </svg>
+          </span>
+          <h2 className="deal-check-heading text-xl font-semibold uppercase tracking-[0.16em]">
+            Today&apos;s deal check
+          </h2>
+        </div>
+
+        <div className="deal-check-mini-grid mt-4">
+          <HomeDealCheckMiniCard
+            href={topDealToday ? `/deal/${topDealToday.id}` : undefined}
+            ariaLabel={topDealToday ? `View top deal today: ${topDealToday.title}` : undefined}
+            label={RANKING_DEFINITIONS.topDealToday.label}
+            deal={topDealTodayResult.ok ? topDealToday : null}
+            value={topDealTodayResult.ok && topDealToday ? formatMyrPrice(topDealToday.price) : "-"}
+            fallbackTitle={topDealTodayResult.ok ? "No deals ranked today yet" : "Deals unavailable"}
+          />
+          <HomeDealCheckMiniCard
+            href={topDealThisWeek ? `/deal/${topDealThisWeek.id}` : undefined}
+            ariaLabel={topDealThisWeek ? `View top deal this week: ${topDealThisWeek.title}` : undefined}
+            label={RANKING_DEFINITIONS.topDealThisWeek.label}
+            deal={topDealThisWeekResult.ok ? topDealThisWeek : null}
+            value={topDealThisWeekResult.ok && topDealThisWeek ? formatMyrPrice(topDealThisWeek.price) : "-"}
+            fallbackTitle={topDealThisWeekResult.ok ? "No deals ranked this week yet" : "Deals unavailable"}
+          />
+          <HomeDealCheckMiniCard
+            href={biggestDropDeal ? `/deal/${biggestDropDeal.id}` : undefined}
+            ariaLabel={biggestDropDeal ? `View biggest price drop today: ${biggestDropDeal.title}` : undefined}
+            label={RANKING_DEFINITIONS.biggestPriceDropToday.label}
+            deal={todayDropDealsResult.ok ? biggestDropDeal : null}
+            value={biggestDropSavings ? `Save ${formatMyrPrice(biggestDropSavings)}` : "-"}
+            fallbackTitle={todayDropDealsResult.ok ? "No price drops ranked today yet" : "Deals unavailable"}
+          />
+          <HomeDealCheckMiniCard
+            href={mostDiscussedDeal ? `/deal/${mostDiscussedDeal.id}#comments` : undefined}
+            ariaLabel={mostDiscussedDeal ? `View most discussed deal today: ${mostDiscussedDeal.title}` : undefined}
+            label={RANKING_DEFINITIONS.mostDiscussedToday.label}
+            deal={mostDiscussedTodayDealResult.ok ? mostDiscussedDeal : null}
+            value={`${mostDiscussedCount} ${mostDiscussedCount === 1 ? "comment" : "comments"}`}
+            fallbackTitle={mostDiscussedTodayDealResult.ok ? "No discussions today yet" : "Comments unavailable"}
+          />
+        </div>
+      </div>
+    </section>
+  );
 
   return (
     <div className="home-page flex flex-1 flex-col text-slate-900" style={ambientGradientStyle}>
@@ -561,28 +612,59 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                   </svg>
                 </Link>
             </div>
+
+            <div className="home-trust-points mt-11 grid grid-cols-3 gap-5 text-sm font-bold text-slate-950">
+              <div className="flex min-w-0 flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+                <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+                    <path d="M16 21v-2a4 4 0 0 0-8 0v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </span>
+                <span>Real People<br />Real Deals</span>
+              </div>
+              <div className="flex min-w-0 flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+                <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                    <path d="m9 12 2 2 4-4" />
+                  </svg>
+                </span>
+                <span>Community<br />Verified</span>
+              </div>
+              <div className="flex min-w-0 flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+                <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+                    <path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.82 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
+                    <path d="M7 7h.01" />
+                  </svg>
+                </span>
+                <span>Save More<br />Everyday</span>
+              </div>
+            </div>
           </div>
         </section>
+
+        {dealCheckPanel}
 
         <section id="deals" className="home-deal-feed home-panel min-w-0 scroll-mt-28 lg:col-span-2">
           <div className="flex flex-col gap-7">
             <div className="community-feed-controls">
-              <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:justify-between">
-                <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
+              <div className="home-feed-filter-groups flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:justify-between">
+                <div className="home-feed-mode-grid flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
                   {feedModes.map((mode) => {
                     const isSelected = mode.value === feed;
 
                     return (
                       <Link
                         key={mode.value}
-                        href={createHomeHref({
+                        href={`${createHomeHref({
                           q,
                           category,
                           subCategory,
                           feed: mode.value,
                           period: mode.value === "new" ? "all" : period,
-                        })}
-                        scroll={false}
+                        })}#deals`}
                         title={mode.label}
                         aria-current={isSelected ? "page" : undefined}
                         className={`community-feed-period inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-md border px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 ${
@@ -599,15 +681,14 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
                 </div>
 
                 {feed !== "new" ? (
-                  <div className="community-feed-periods flex flex-wrap items-center gap-2 lg:flex-nowrap">
+                  <div className="home-feed-period-grid community-feed-periods flex flex-wrap items-center gap-2 lg:flex-nowrap">
                     {feedPeriods.map((mode) => {
                       const isSelected = mode.value === period;
 
                       return (
                         <Link
                           key={mode.value}
-                          href={createHomeHref({ q, category, subCategory, feed, period: mode.value })}
-                          scroll={false}
+                          href={`${createHomeHref({ q, category, subCategory, feed, period: mode.value })}#deals`}
                           title={
                             mode.value === "all"
                               ? "No posted-date filter."
@@ -778,85 +859,6 @@ export default async function Home({ searchParams }: { searchParams: HomeSearchP
           </div>
         </section>
 
-        <section className="home-secondary-content min-w-0 py-2 sm:py-6">
-          <div className="deal-check-card rounded-3xl border p-5 shadow-sm">
-            <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-3 border-b border-slate-200 pb-3">
-              <span className="flex h-12 w-12 items-center justify-center text-[#dc115e]">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5">
-                  <path d="M22 12h-4l-3 8-6-16-3 8H2" />
-                </svg>
-              </span>
-              <h2 className="deal-check-heading text-xl font-semibold uppercase tracking-[0.16em]">
-                Today&apos;s deal check
-              </h2>
-            </div>
-
-            <div className="deal-check-mini-grid mt-4">
-              <HomeDealCheckMiniCard
-                href={topDealToday ? `/deal/${topDealToday.id}` : undefined}
-                ariaLabel={topDealToday ? `View top deal today: ${topDealToday.title}` : undefined}
-                label={RANKING_DEFINITIONS.topDealToday.label}
-                deal={topDealTodayResult.ok ? topDealToday : null}
-                value={topDealTodayResult.ok && topDealToday ? formatMyrPrice(topDealToday.price) : "-"}
-                fallbackTitle={topDealTodayResult.ok ? "No deals ranked today yet" : "Deals unavailable"}
-              />
-              <HomeDealCheckMiniCard
-                href={topDealThisWeek ? `/deal/${topDealThisWeek.id}` : undefined}
-                ariaLabel={topDealThisWeek ? `View top deal this week: ${topDealThisWeek.title}` : undefined}
-                label={RANKING_DEFINITIONS.topDealThisWeek.label}
-                deal={topDealThisWeekResult.ok ? topDealThisWeek : null}
-                value={topDealThisWeekResult.ok && topDealThisWeek ? formatMyrPrice(topDealThisWeek.price) : "-"}
-                fallbackTitle={topDealThisWeekResult.ok ? "No deals ranked this week yet" : "Deals unavailable"}
-              />
-              <HomeDealCheckMiniCard
-                href={biggestDropDeal ? `/deal/${biggestDropDeal.id}` : undefined}
-                ariaLabel={biggestDropDeal ? `View biggest price drop today: ${biggestDropDeal.title}` : undefined}
-                label={RANKING_DEFINITIONS.biggestPriceDropToday.label}
-                deal={todayDropDealsResult.ok ? biggestDropDeal : null}
-                value={biggestDropSavings ? `Save ${formatMyrPrice(biggestDropSavings)}` : "-"}
-                fallbackTitle={todayDropDealsResult.ok ? "No price drops ranked today yet" : "Deals unavailable"}
-              />
-              <HomeDealCheckMiniCard
-                href={mostDiscussedDeal ? `/deal/${mostDiscussedDeal.id}#comments` : undefined}
-                ariaLabel={mostDiscussedDeal ? `View most discussed deal today: ${mostDiscussedDeal.title}` : undefined}
-                label={RANKING_DEFINITIONS.mostDiscussedToday.label}
-                deal={mostDiscussedTodayDealResult.ok ? mostDiscussedDeal : null}
-                value={`${mostDiscussedCount} ${mostDiscussedCount === 1 ? "comment" : "comments"}`}
-                fallbackTitle={mostDiscussedTodayDealResult.ok ? "No discussions today yet" : "Comments unavailable"}
-              />
-            </div>
-          </div>
-
-          <div className="home-trust-points mt-6 grid gap-3 text-sm font-bold text-slate-950 sm:grid-cols-3 lg:grid-cols-1">
-            <div className="flex items-center gap-3">
-              <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
-                  <path d="M16 21v-2a4 4 0 0 0-8 0v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              </span>
-              <span>Real People<br />Real Deals</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-                  <path d="m9 12 2 2 4-4" />
-                </svg>
-              </span>
-              <span>Community<br />Verified</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="deal-check-icon-yellow flex h-11 w-11 shrink-0 items-center justify-center rounded-full border">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
-                  <path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.82 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
-                  <path d="M7 7h.01" />
-                </svg>
-              </span>
-              <span>Save More<br />Everyday</span>
-            </div>
-          </div>
-        </section>
       </main>
 
       <footer className="site-footer border-t px-4 py-6 text-sm sm:px-6 lg:px-8">

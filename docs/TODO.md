@@ -9,15 +9,25 @@ the completed section with its completion date.
 Active items are ordered from easier to harder based on their current scope,
 dependencies, external approvals, and verification requirements.
 
+Priority labels for external follow-up:
+
+- **P0 — Before public launch or feature enablement:** Security, legal, privacy, and abuse-prevention decisions that gate a safe release or a sensitive account capability.
+- **P1 — Release assurance:** Physical-device, production-performance, image-delivery, and isolated integration verification needed to validate the release under real conditions.
+- **P2 — Optional operational capability:** Provider setup required before enabling email-dependent features.
+- **P3 — Deferred growth work:** Social login, affiliate monetisation, and product-data integrations to revisit only after the core website is public and the required accounts and permissions are approved.
+
 ### Refine the mobile and tablet marketplace experience
 
 - Status: Repository implementation complete; physical-device and production verification pending
+- Priority: P1 — Release assurance
 - Added: 2026-07-15
 - Updated: 2026-07-16
 - Repository progress:
   - Completed the feed-first mobile order, responsive 1/2/3/4-column feed, container-aware deal actions, 44px repeated controls, responsive sizing hints, lazy loading, touch-friendly gallery, and narrow profile pagination.
+  - Corrected responsive regressions discovered after completion: placed the deal check before the feed in document order and anchored it with named grid areas, kept the tablet feed at two columns, aligned and compacted mobile navigation, search, hero, menu, category, trust points, and sorting controls, added a single-row mobile logo/search header, a safe-area-aware bottom navigation for menu, posting, account, and authorized administrator access, a three-column mobile trust strip, and a divider-attached two-tier mobile sorting strip whose filter navigation stays anchored to the deals section, kept desktop account actions out of phone-landscape/tablet headers, prevented sparse content from stretching card height, restored the compact desktop card action row, and removed mobile pseudo-gradients that mis-composited in Safari full-page captures.
+  - Added the current LAN hostname to Next.js `allowedDevOrigins` so phone-based local development hydrates client controls instead of rendering inert Menu, Categories, autocomplete, voting, saving, and other interactive UI.
   - Automated typecheck, lint, tests, and production build pass. Local browser checks pass at 320, 360, 390, 430, 768, 820, 1024, and 1180 CSS pixels with no page-level overflow; the 1024px three-column feed regression found during review was corrected.
-  - Remaining completion blockers are physical iOS/Android checks, production Core Web Vitals, and a trusted image transformation pipeline capable of generating real `srcset` variants for arbitrary user media.
+  - **P1:** Complete physical iOS Safari and Android Chrome checks before launch, measure production Core Web Vitals after public deployment, and select a trusted image transformation pipeline capable of generating real `srcset` variants for arbitrary user media before image traffic scales.
 - Goal: Make Deal Rakyat faster and easier to scan and operate on phones and tablets without replacing the responsive foundation that already works.
 - Completion criteria:
   - Make the mobile homepage feed-first by compacting the introduction and moving secondary trust and deal-check content below the first deal results where appropriate.
@@ -41,6 +51,7 @@ dependencies, external approvals, and verification requirements.
 ### Redesign the admin experience using Settings as the reference
 
 - Status: Repository implementation complete; release verification and action regression coverage pending
+- Priority: P1 — Release assurance
 - Added: 2026-07-15
 - Updated: 2026-07-16
 - Repository progress:
@@ -59,14 +70,15 @@ dependencies, external approvals, and verification requirements.
 ### Complete account settings that do not require email delivery
 
 - Status: Partially completed; destructive lifecycle blocked
+- Priority: P0 for production throttling and account deletion prerequisites; P1 for isolated action coverage; P2 for email-dependent features
 - Added: 2026-07-15
 - Updated: 2026-07-16
 - Repository progress:
   - Completed profile-picture reset, immutable-handle UI and server enforcement, authenticated password change with validation/current-session refresh/best-effort per-instance throttling, disabled email-only preferences, and the paginated in-app notification schema, event delivery, inbox, preferences, deduplication, and read state.
-  - Added focused pure-helper tests for password validation, handle immutability, notification preferences and ownership, schema-safe notification payloads, deduplication, and read-state rules. Isolated action/controller coverage remains required for avatar reset, password authorization, notification delivery and mutation, and administrator moderation actions.
-  - Production-grade password throttling remains blocked on choosing a shared account-and-IP limiter (for example PostgreSQL or Redis); the current in-process limiter is intentionally documented as best-effort and must not be treated as distributed abuse protection.
-  - Account deactivation/deletion remains blocked until the project adopts revocable sessions or refresh tokens, defines recent-auth proof, retention/legal holds, content anonymisation, recovery windows, and administrator audit policy. Legacy Strapi JWTs cannot currently be invalidated before expiry.
-  - Forgotten-password recovery and email-address changes remain deferred until email delivery and ownership verification are configured.
+  - **P1:** Added focused pure-helper tests for password validation, handle immutability, notification preferences and ownership, schema-safe notification payloads, deduplication, and read-state rules. Add isolated integration fixtures for avatar reset, password authorization, notification delivery and mutation, account/notification server actions, and administrator moderation actions.
+  - **P0:** Choose PostgreSQL or Redis for a shared password account-and-IP limiter before treating throttling as production-grade; the current in-process limiter is intentionally best-effort and does not provide distributed abuse protection.
+  - **P0 before enabling deletion:** Adopt revocable sessions or refresh tokens and decide recent-authentication proof, retention and legal holds, content anonymisation, recovery windows, and administrator audit policy. Legacy Strapi JWTs cannot currently be invalidated before expiry, so account deactivation/deletion must remain unavailable until these decisions are implemented.
+  - **P2:** Configure an approved email provider and required environment variables before enabling forgotten-password recovery, email-address changes, weekly summaries, or marketing email; ownership verification, consent, and unsubscribe controls remain required where applicable.
 - Goal: Finish useful first-party profile and account controls that can operate safely before Resend, email verification, and recovery are configured.
 - Completion criteria:
   - Add a clear remove/reset action for the profile picture and preserve the existing upload, compression, validation, error, and fallback-initial behavior.
@@ -81,6 +93,7 @@ dependencies, external approvals, and verification requirements.
 ### Add optional connected-account sign-in
 
 - Status: Deferred
+- Priority: P3 — Deferred until after the core website is public
 - Added: 2026-07-15
 - Goal: Add Google or another approved identity provider later while keeping Strapi users and credentials in PostgreSQL as the primary account system.
 - Completion criteria:
@@ -94,6 +107,7 @@ dependencies, external approvals, and verification requirements.
 ### Implement approved affiliate-link routing
 
 - Status: Deferred
+- Priority: P3 — Deferred until after the core website is public and publisher accounts are approved
 - Added: 2026-07-15
 - Goal: Monetize eligible user-submitted merchant links without blocking or rewriting unsupported links incorrectly.
 - Completion criteria:
@@ -109,6 +123,7 @@ dependencies, external approvals, and verification requirements.
 ### Build a rights-aware product-data integration
 
 - Status: Deferred
+- Priority: P3 — Deferred until approved feeds, field rights, and image permissions exist
 - Added: 2026-07-15
 - Updated: 2026-07-16
 - Deferral reason: Scraping and automated product-data assistance remain out of scope until the website is finished and approved merchant or affiliate accounts provide documented field and image rights. The complete manual submission and permitted user-upload fallback remains available.
@@ -123,6 +138,7 @@ dependencies, external approvals, and verification requirements.
 ### Complete pre-public-launch legal readiness
 
 - Status: Blocked on external legal and business decisions
+- Priority: P0 — Required before public registration and user posting
 - Added: 2026-07-15
 - Updated: 2026-07-16
 - Repository progress:

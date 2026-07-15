@@ -510,6 +510,12 @@ export default function TopNavClient({
     }
   };
 
+  const handleOpenMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    menuOpenButtonRef.current = event.currentTarget;
+    setIsHeaderHidden(false);
+    setIsMenuOpen(true);
+  };
+
   const authHref = `/auth?next=${encodeURIComponent(authNext)}`;
   const postIsActive = pathname === "/post";
   const profileIsActive = pathname === "/profile";
@@ -646,19 +652,15 @@ export default function TopNavClient({
           isHeaderHidden ? "-translate-y-full" : "translate-y-0"
         }`}
       >
-      <nav className="mx-auto grid max-w-7xl gap-3 px-4 py-2 sm:px-6 lg:grid-cols-[auto_minmax(240px,1fr)_auto] lg:items-center lg:px-8">
-        <div className="flex min-w-0 items-center gap-4">
+      <nav className="topbar-primary-nav mx-auto grid max-w-7xl gap-3 px-4 py-2 sm:px-6 lg:grid-cols-[auto_minmax(240px,1fr)_auto] lg:items-center lg:px-8">
+        <div className="topbar-brand-group flex min-w-0 items-center gap-4">
           <button
             type="button"
             aria-label="Open menu"
             aria-expanded={isMenuOpen}
             aria-controls={mobileMenuId}
-            ref={menuOpenButtonRef}
-            onClick={() => {
-              setIsHeaderHidden(false);
-              setIsMenuOpen(true);
-            }}
-            className="topbar-menu-trigger inline-flex h-10 w-10 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/20"
+            onClick={handleOpenMenu}
+            className="topbar-menu-trigger topbar-desktop-menu-trigger inline-flex h-10 w-10 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/20"
           >
             <svg
               aria-hidden="true"
@@ -679,7 +681,7 @@ export default function TopNavClient({
             href="/"
             onClick={handleLogoClick}
             aria-label="Deal Rakyat home"
-            className="inline-flex h-11 w-28 shrink-0 cursor-pointer items-center justify-center overflow-hidden bg-transparent px-2 py-1 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 sm:h-12 sm:w-32"
+            className="topbar-logo inline-flex h-11 w-28 shrink-0 cursor-pointer items-center justify-center overflow-hidden bg-transparent px-2 py-1 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 sm:h-12 sm:w-32"
           >
             <Image
               src="/deal-rakyat-logo.svg"
@@ -826,7 +828,7 @@ export default function TopNavClient({
           ) : null}
         </form>
 
-        <div className="hidden flex-wrap items-center gap-2 sm:flex lg:justify-end">
+        <div className="hidden flex-wrap items-center gap-2 lg:flex lg:justify-end">
           <Link
             href="/post"
             aria-current={postIsActive ? "page" : undefined}
@@ -1041,6 +1043,61 @@ export default function TopNavClient({
         </div>
       ) : null}
       </header>
+
+      <nav className={`mobile-bottom-nav hidden ${isAdmin ? "has-admin" : ""}`} aria-label="Mobile navigation">
+        <button
+          type="button"
+          aria-label="Open menu"
+          aria-expanded={isMenuOpen}
+          aria-controls={mobileMenuId}
+          onClick={handleOpenMenu}
+          className={`mobile-bottom-nav-item ${isMenuOpen ? "is-active" : ""}`}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+            <path d="M4 7h16" />
+            <path d="M4 12h16" />
+            <path d="M4 17h16" />
+          </svg>
+          <span>Menu</span>
+        </button>
+        <Link
+          href="/post"
+          aria-current={postIsActive ? "page" : undefined}
+          className={`mobile-bottom-nav-item ${postIsActive ? "is-active" : ""}`}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+            <path d="M12 8v8" />
+            <path d="M8 12h8" />
+          </svg>
+          <span>Post</span>
+        </Link>
+        <Link
+          href={userEmail ? "/profile" : authHref}
+          aria-current={userEmail ? (profileIsActive ? "page" : undefined) : (pathname === "/auth" ? "page" : undefined)}
+          className={`mobile-bottom-nav-item ${userEmail ? (profileIsActive ? "is-active" : "") : (pathname === "/auth" ? "is-active" : "")}`}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+            <circle cx="12" cy="8" r="3" />
+            <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+          </svg>
+          <span>{userEmail ? "Profile" : "Log in"}</span>
+        </Link>
+        {isAdmin ? (
+          <Link
+            href="/admin"
+            aria-current={adminIsActive ? "page" : undefined}
+            className={`mobile-bottom-nav-item ${adminIsActive ? "is-active" : ""}`}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" className="h-6 w-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+              <path d="M9 12h6" />
+              <path d="M12 9v6" />
+            </svg>
+            <span>Admin</span>
+          </Link>
+        ) : null}
+      </nav>
 
       {isCategoryMegaMenuOpen ? (
         <button
