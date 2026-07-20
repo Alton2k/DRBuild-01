@@ -15,8 +15,6 @@ import {
   UserSettingsValidationError,
 } from "@/lib/userSettings";
 
-export type { ChangePasswordActionResult, SaveAccountSettingsActionResult };
-
 const settingsOperations = createSettingsActionOperations({
   getCurrentUser,
   saveSettings: saveAccountSettingsForUser,
