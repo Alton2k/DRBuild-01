@@ -176,6 +176,7 @@ Template:
 ```env
 STRAPI_URL=http://127.0.0.1:1337
 STRAPI_API_TOKEN=paste_your_strapi_api_token_here
+PASSWORD_RATE_LIMIT_SECRET=<same random 32+ byte value as backend/.env>
 CF_ACCESS_CLIENT_ID=
 CF_ACCESS_CLIENT_SECRET=
 ADMIN_EMAILS=local@example.com
@@ -188,6 +189,7 @@ Notes:
 
 - `STRAPI_URL` points the Next.js frontend to Strapi.
 - `STRAPI_API_TOKEN` must be created in Strapi Admin.
+- `PASSWORD_RATE_LIMIT_SECRET` signs server-to-server client-IP proofs for password throttling. Keep it server-only and identical to the backend value.
 - `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` are an optional Cloudflare Access service-token pair for server-to-server Strapi requests. Configure both or neither, keep them unprefixed and server-only, and never expose them to browser code.
 - `ADMIN_EMAILS` is the website user email allowed to open `/admin`.
 - `ADMIN_EMAILS` is not the Strapi admin email unless the same email is also used for the website login.
@@ -216,6 +218,7 @@ ADMIN_JWT_SECRET=paste_or_generate_secret_value_here
 TRANSFER_TOKEN_SALT=paste_or_generate_secret_value_here
 ENCRYPTION_KEY=paste_or_generate_secret_value_here
 JWT_SECRET=paste_or_generate_secret_value_here
+PASSWORD_RATE_LIMIT_SECRET=<same random 32+ byte value as .env.local>
 
 # Database
 DATABASE_CLIENT=postgres
@@ -769,6 +772,7 @@ ADMIN_JWT_SECRET=<existing value>
 TRANSFER_TOKEN_SALT=<existing value>
 ENCRYPTION_KEY=<existing value>
 JWT_SECRET=<existing value>
+PASSWORD_RATE_LIMIT_SECRET=<same random 32+ byte value as Vercel>
 R2_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=<bucket-scoped access key>
 R2_SECRET_ACCESS_KEY=<bucket-scoped secret key>
@@ -791,6 +795,7 @@ Set these Vercel variables:
 ```text
 STRAPI_URL=https://<temporary-strapi-domain>.up.railway.app
 STRAPI_API_TOKEN=<production Strapi API token>
+PASSWORD_RATE_LIMIT_SECRET=<same random 32+ byte value as Railway>
 CF_ACCESS_CLIENT_ID=<Cloudflare Access service-token client ID>
 CF_ACCESS_CLIENT_SECRET=<Cloudflare Access service-token client secret>
 ADMIN_EMAILS=<comma-separated website admin emails>
@@ -799,7 +804,7 @@ SITE_ACCESS_PIN=<unique random preview code, 12-128 characters>
 SITE_ACCESS_SECRET=<random value at least 32 characters long>
 ```
 
-`NEXT_PUBLIC_SITE_URL` is a build-time public variable, so redeploy the frontend after changing it. Keep `STRAPI_API_TOKEN`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET` unprefixed so they are never included in browser bundles. The Cloudflare pair must be configured together; leave both empty when the Strapi hostname is not protected by Access.
+`NEXT_PUBLIC_SITE_URL` is a build-time public variable, so redeploy the frontend after changing it. Keep `STRAPI_API_TOKEN`, `PASSWORD_RATE_LIMIT_SECRET`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET` unprefixed so they are never included in browser bundles. Use the same `PASSWORD_RATE_LIMIT_SECRET` in Vercel and Railway. The Cloudflare pair must be configured together; leave both empty when the Strapi hostname is not protected by Access.
 
 While the site is under development, set both `SITE_ACCESS_PIN` and `SITE_ACCESS_SECRET` for the Production environment. The frontend then serves a JavaScript-free generic gate before any application page or asset, protects frontend API and health routes, issues a signed 15-minute HTTP-only cookie after a correct code, and sends restrictive cache, indexing, framing, referrer, and content-security headers. Redeploy after adding or removing these variables. Keep the Vercel frontend DNS records in Cloudflare set to **DNS only**; Cloudflare Access requires proxying and is not used in this architecture.
 

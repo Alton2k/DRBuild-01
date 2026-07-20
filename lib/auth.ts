@@ -3,6 +3,10 @@ import "server-only";
 import { cookies } from "next/headers";
 import { getStrapiAccessHeaders, getStrapiToken, getStrapiUrl } from "./strapi";
 import { validatePasswordChange } from "./accountSettings";
+import {
+  createPasswordRateLimitProof,
+  getPasswordRateLimitRetryMessage,
+} from "./passwordRateLimitProof";
 
 export const strapiAuthCookieName = "dealmy_strapi_jwt";
 
@@ -192,6 +196,9 @@ export async function changeCurrentUserPassword(input: {
   currentPassword?: unknown;
   password?: unknown;
   passwordConfirmation?: unknown;
+}, rateLimitContext: {
+  accountId: string;
+  ipAddress: string;
 }): Promise<ChangePasswordResult> {
   const validated = validatePasswordChange(input);
 
@@ -208,6 +215,12 @@ export async function changeCurrentUserPassword(input: {
   let response: Response;
 
   try {
+    const rateLimitHeaders = createPasswordRateLimitProof({
+      secret: process.env.PASSWORD_RATE_LIMIT_SECRET,
+      accountId: rateLimitContext.accountId,
+      ipAddress: rateLimitContext.ipAddress,
+    });
+
     response = await fetch(`${getStrapiUrl()}/api/auth/change-password`, {
       method: "POST",
       headers: {
@@ -215,6 +228,7 @@ export async function changeCurrentUserPassword(input: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${jwt}`,
         ...getStrapiAccessHeaders(),
+        ...rateLimitHeaders,
       },
       body: JSON.stringify({
         currentPassword: validated.currentPassword,
@@ -224,12 +238,20 @@ export async function changeCurrentUserPassword(input: {
       cache: "no-store",
     });
   } catch {
-    return { ok: false, field: "form", message: "Could not connect to the account service." };
+    return { ok: false, field: "form", message: "Unable to process the password change. Please try again later." };
   }
 
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
+    if (response.status === 429) {
+      return {
+        ok: false,
+        field: "form",
+        message: getPasswordRateLimitRetryMessage(response.headers.get("retry-after")),
+      };
+    }
+
     const message = typeof body?.error?.message === "string" ? body.error.message : "Could not change your password.";
     const currentPasswordError = /current password|invalid/i.test(message);
 

@@ -46,9 +46,25 @@ ADMIN_JWT_SECRET
 TRANSFER_TOKEN_SALT
 ENCRYPTION_KEY
 JWT_SECRET
+PASSWORD_RATE_LIMIT_SECRET
 ```
 
 When connecting to an existing project database, use the existing Strapi secret values instead of generating new ones.
+
+`PASSWORD_RATE_LIMIT_SECRET` must contain at least 32 random bytes and must be
+identical in the Next.js server environment and every backend instance in one
+environment. It signs short-lived server-to-server client-IP proofs and hashes
+the account and IP identifiers stored in password-attempt rows. Raw account
+identifiers, IP addresses, passwords, credentials, and auth tokens are never
+stored in the limiter table. Rotating the key invalidates active limiter
+buckets and in-flight proofs; expired buckets are removed opportunistically by
+later password attempts.
+
+Generate a suitable value without writing it to the repository:
+
+```sh
+openssl rand -hex 32
+```
 
 Do not commit `backend/.env`.
 
@@ -132,6 +148,7 @@ They currently cover:
 - comment report counts and a database-unique private report key for duplicate protection
 - removal of the placeholder comment `test` field, archiving any populated legacy values before the column is dropped
 - a private SHA-256 comment submission key and unique index that closes concurrent duplicate-comment races
+- distributed password-change attempt buckets keyed by HMAC-SHA256 account and IP identifiers
 
 Migrations are written to be additive and idempotent where practical. Strapi runs pending migrations when the backend starts against a database that has not recorded them.
 
@@ -142,6 +159,20 @@ The comment edit migration is additive and safe for existing rows: historical co
 Comment reports use the `comment-report` content type. Backend bootstrap verifies the unique `comment_reports.report_key` index after Strapi has synchronized content tables, including on a fresh database where the table does not exist during the earlier migration phase.
 
 New comments receive an account-based submission key (or an anonymous-viewer key when signed out). Backend bootstrap verifies `comments_submission_key_uq` after schema synchronization; legacy rows remain nullable and the existing duplicate preflight continues to cover them.
+
+Authenticated password changes are limited at Strapi's
+`POST /api/auth/change-password` boundary. The migration creates
+`password_rate_limits`; account and IP counters are updated under database row
+locks in one transaction. Five account attempts or twenty IP attempts are
+allowed per 15-minute window before a 15-minute temporary lockout, and expired
+rows are deleted on later attempts. Next.js signs the member IP with an
+account-bound 60-second HMAC proof so Strapi does not collapse server actions
+onto the frontend service's egress IP; direct authenticated Strapi calls use
+Strapi's trusted-proxy request IP. Production Next.js requests accept only
+Vercel's platform-controlled `x-vercel-forwarded-for` value for this proof;
+generic forwarding headers are a local-development fallback only. Apply the migration through the normal
+Strapi startup/deploy process after setting `PASSWORD_RATE_LIMIT_SECRET` in
+both server environments. Do not run it manually against production.
 
 The placeholder-field cleanup preserves any nonempty legacy `comments.test` values in `comment_test_field_archive`. The application does not expose that archive; it exists only to keep the corrective migration reversible.
 
