@@ -135,7 +135,7 @@ function getCategoryGridStyle(itemCount: number): CategoryGridStyle {
  */
 export default function TopNavClient({
   categories,
-  initialThemeMode = "auto",
+  initialThemeMode,
   isAdmin,
   userEmail,
 }: {
@@ -175,12 +175,13 @@ export default function TopNavClient({
   const mainMenuDialogRef = useRef<HTMLElement>(null);
   const categoryMenuDialogRef = useRef<HTMLElement>(null);
   const wasMenuOpenRef = useRef(false);
+  const synchronizedThemeUserRef = useRef<string | null>(null);
   const lastScrollYRef = useRef(0);
   const searchValue = searchDraft.sourceQuery === activeSearchQuery ? searchDraft.value : activeSearchQuery;
   const themeMode = useSyncExternalStore<ThemeMode>(
     subscribeToThemeModeChanges,
     getStoredThemeMode,
-    () => initialThemeMode,
+    () => initialThemeMode ?? "auto",
   );
   const memberResultsAreVisible =
     isSearchFocused &&
@@ -276,15 +277,30 @@ export default function TopNavClient({
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
+    if (!userEmail) {
+      synchronizedThemeUserRef.current = null;
+    } else if (
+      initialThemeMode &&
+      synchronizedThemeUserRef.current !== userEmail
+    ) {
+      synchronizedThemeUserRef.current = userEmail;
+
+      if (getStoredThemeMode() !== initialThemeMode) {
+        localStorage.setItem(themeStorageKey, initialThemeMode);
+        window.dispatchEvent(new Event(themeModeChangedEventName));
+      }
+    }
+
     if (!localStorage.getItem(themeStorageKey)) {
-      localStorage.setItem(themeStorageKey, initialThemeMode);
+      const themeToApply = initialThemeMode ?? "auto";
+      localStorage.setItem(themeStorageKey, themeToApply);
       window.dispatchEvent(new Event(themeModeChangedEventName));
     }
 
-    applyThemeMode(themeMode);
+    applyThemeMode(getStoredThemeMode());
 
     const handleSystemThemeChange = () => {
-      if (themeMode === "auto") {
+      if (getStoredThemeMode() === "auto") {
         applyThemeMode("auto");
       }
     };
@@ -294,7 +310,7 @@ export default function TopNavClient({
     return () => {
       mediaQuery.removeEventListener("change", handleSystemThemeChange);
     };
-  }, [initialThemeMode, themeMode]);
+  }, [initialThemeMode, themeMode, userEmail]);
 
   useEffect(() => {
     if (isMenuOpen) {

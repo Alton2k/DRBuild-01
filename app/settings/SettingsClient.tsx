@@ -43,6 +43,7 @@ type SaveStatus = {
   message: string;
 };
 type PasswordField = "currentPassword" | "password" | "passwordConfirmation" | "form";
+type PasswordInputField = Exclude<PasswordField, "form">;
 
 const avatarMaxSize = 320;
 const avatarMaxFileBytes = 5 * 1024 * 1024;
@@ -295,6 +296,40 @@ function Icon({ name }: { name: "upload" | "shield" | "clock" | "activity" | "do
   );
 }
 
+function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
+  return visible ? (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="m2 2 20 20" />
+      <path d="M10.58 10.58a2 2 0 0 0 2.83 2.83" />
+      <path d="M9.88 4.24A10.8 10.8 0 0 1 12 4c5 0 9 4 10 8a11.8 11.8 0 0 1-2.39 4.36" />
+      <path d="M6.61 6.61A11.8 11.8 0 0 0 2 12c1 4 5 8 10 8a10.9 10.9 0 0 0 5.39-1.39" />
+    </svg>
+  ) : (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M2 12s4-8 10-8 10 8 10 8-4 8-10 8S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 function ThemeModeIcon({ theme }: { theme: SettingsTheme }) {
   if (theme === "light") {
     return (
@@ -369,6 +404,11 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
     currentPassword: "",
     password: "",
     passwordConfirmation: "",
+  });
+  const [visiblePasswordFields, setVisiblePasswordFields] = useState<Record<PasswordInputField, boolean>>({
+    currentPassword: false,
+    password: false,
+    passwordConfirmation: false,
   });
   const [passwordStatus, setPasswordStatus] = useState<SaveStatus & { field?: PasswordField }>({
     state: "idle",
@@ -545,6 +585,11 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
     }
 
     setPasswordForm({ currentPassword: "", password: "", passwordConfirmation: "" });
+    setVisiblePasswordFields({
+      currentPassword: false,
+      password: false,
+      passwordConfirmation: false,
+    });
     setPasswordStatus({ state: "success", message: result.message });
   }
 
@@ -627,7 +672,7 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                             updateForm("avatarUrl", "");
                             setProfileSaveStatus({ state: "idle", message: "" });
                           }}
-                          className="mt-2 inline-flex min-h-10 items-center justify-center rounded-md px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-500/15"
+                          className="mt-2 inline-flex min-h-10 items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-500/15"
                         >
                           Remove picture
                         </button>
@@ -857,26 +902,48 @@ export default function SettingsClient({ user, initialSettings }: SettingsClient
                         ? passwordStatus.message
                         : "";
                       const errorId = `${field}-error`;
+                      const inputId = `security-${field}`;
+                      const passwordIsVisible = visiblePasswordFields[field];
+                      const visibilityLabel = `${passwordIsVisible ? "Hide" : "Show"} ${label.toLowerCase()}`;
 
                       return (
-                        <label key={field} className="grid gap-2 text-sm font-bold text-slate-950">
-                          <span>{label}</span>
-                          <input
-                            type="password"
-                            name={field}
-                            value={passwordForm[field]}
-                            autoComplete={autoComplete}
-                            aria-invalid={Boolean(error)}
-                            aria-describedby={error ? errorId : undefined}
-                            disabled={passwordStatus.state === "pending"}
-                            onChange={(event) => {
-                              setPasswordForm((current) => ({ ...current, [field]: event.target.value }));
-                              if (passwordStatus.state === "error") setPasswordStatus({ state: "idle", message: "" });
-                            }}
-                            className="post-form-field min-h-11 w-full rounded-md border border-slate-200 px-4 text-sm font-normal text-slate-950 outline-none transition focus-visible:border-[#dc115e] focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 disabled:cursor-not-allowed disabled:opacity-60"
-                          />
+                        <div key={field} className="grid gap-2 text-sm font-bold text-slate-950">
+                          <label htmlFor={inputId}>{label}</label>
+                          <span className="relative block">
+                            <input
+                              id={inputId}
+                              type={passwordIsVisible ? "text" : "password"}
+                              name={field}
+                              value={passwordForm[field]}
+                              autoComplete={autoComplete}
+                              aria-invalid={Boolean(error)}
+                              aria-describedby={error ? errorId : undefined}
+                              disabled={passwordStatus.state === "pending"}
+                              onChange={(event) => {
+                                setPasswordForm((current) => ({ ...current, [field]: event.target.value }));
+                                if (passwordStatus.state === "error") setPasswordStatus({ state: "idle", message: "" });
+                              }}
+                              className="post-form-field min-h-11 w-full rounded-md border border-slate-200 px-4 pr-12 text-sm font-normal text-slate-950 outline-none transition focus-visible:border-[#dc115e] focus-visible:ring-4 focus-visible:ring-[#dc115e]/15 disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                            <button
+                              type="button"
+                              title={visibilityLabel}
+                              aria-label={visibilityLabel}
+                              aria-pressed={passwordIsVisible}
+                              disabled={passwordStatus.state === "pending"}
+                              onClick={() => {
+                                setVisiblePasswordFields((current) => ({
+                                  ...current,
+                                  [field]: !current[field],
+                                }));
+                              }}
+                              className="absolute right-0.5 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dc115e]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <PasswordVisibilityIcon visible={passwordIsVisible} />
+                            </button>
+                          </span>
                           {error ? <span id={errorId} className="text-xs font-semibold text-rose-600">{error}</span> : null}
-                        </label>
+                        </div>
                       );
                     })}
                     {passwordStatus.message && (passwordStatus.field === "form" || passwordStatus.state === "success" || passwordStatus.state === "pending") ? (

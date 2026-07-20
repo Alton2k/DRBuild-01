@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getStrapiAccessHeaders, getStrapiUrl } from "@/lib/strapi";
@@ -166,6 +167,7 @@ export async function emailAuthAction(
     path: "/",
   });
 
+  revalidatePath("/", "layout");
   redirect(next);
 }
 
@@ -175,5 +177,6 @@ export async function googleSignInAction() {
 
 export async function signOutAction() {
   (await cookies()).delete(strapiAuthCookieName);
+  revalidatePath("/", "layout");
   redirect("/");
 }
