@@ -49,7 +49,6 @@ import {
 } from "@/lib/abusePrevention";
 import {
   getString,
-  isDealStatus,
   isCommentReportReason,
   isReportReason,
   isValidActionId,
@@ -66,6 +65,11 @@ import {
   prepareDealMediaUrls,
 } from "@/lib/dealMedia";
 import { getDealMediaChanges } from "@/lib/dealImageData";
+import {
+  deleteDealOperation,
+  moderateCommentOperation,
+  moderateDealOperation,
+} from "@/lib/moderationActionOperations";
 
 export type VoteDirection = "up" | "down";
 
@@ -797,40 +801,13 @@ export async function checkDuplicateDealAction(input: {
 }
 
 export async function moderateDealAction(id: string, status: DealStatus) {
-  await requireAdminUser();
-
-  if (!isValidActionId(id) || !isDealStatus(status)) {
-    throw new Error("Invalid moderation status.");
-  }
-
-  const existingDeal = status === "approved" ? await getDealById(id) : null;
-  await updateDealStatus(id, status, `admin_manual_${status}`);
-
-  if (status === "approved" && existingDeal?.authorUserId && existingDeal.status !== "approved") {
-    await createAccountNotification({
-      recipientUserId: existingDeal.authorUserId,
-      type: "deal_approval",
-      dealDocumentId: existingDeal.id,
-      eventVersion: existingDeal.updatedAt,
-      message: `Your deal “${existingDeal.title.slice(0, 140)}” was approved.`,
-    }).catch(() => null);
-  }
-
-  if (status === "approved" && existingDeal && existingDeal.status !== "approved") {
-    const savedByUserIds = await getSavedDealUserIdsForDeal(id).catch(() => []);
-    await Promise.allSettled(
-      savedByUserIds.map((recipientUserId) =>
-        createAccountNotification({
-          recipientUserId,
-          actorUserId: existingDeal.authorUserId,
-          type: "saved_deal_update",
-          dealDocumentId: id,
-          eventVersion: existingDeal.updatedAt,
-          message: `A saved deal is available again with updates: “${existingDeal.title.slice(0, 140)}”.`,
-        }),
-      ),
-    );
-  }
+  await moderateDealOperation(id, status, {
+    requireAdmin: requireAdminUser,
+    getDealById,
+    updateDealStatus,
+    getSavedDealUserIds: getSavedDealUserIdsForDeal,
+    createNotification: createAccountNotification,
+  });
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath(`/deal/${id}`);
@@ -1060,15 +1037,12 @@ export async function voteDealAction(
 }
 
 export async function deleteDealAction(id: string) {
-  await requireAdminUser();
-
-  if (!isValidActionId(id)) {
-    throw new Error("Invalid deal id.");
-  }
-
-  const uploadedMediaFiles = await getDealUploadedMediaFiles(id);
-  await deleteDeal(id);
-  await deleteUploadedDealMedia(uploadedMediaFiles.map((file) => file.id));
+  await deleteDealOperation(id, {
+    requireAdmin: requireAdminUser,
+    getUploadedMediaIds: async (dealId) => (await getDealUploadedMediaFiles(dealId)).map((file) => file.id),
+    deleteDeal,
+    deleteUploadedMedia: deleteUploadedDealMedia,
+  });
   revalidatePath("/");
   revalidatePath("/admin");
 }
@@ -1501,18 +1475,12 @@ export async function toggleFollowUserAction(
 }
 
 export async function deleteCommentAsAdminAction(commentId: string) {
-  await requireAdminUser();
+  const result = await moderateCommentOperation(commentId, {
+    requireAdmin: requireAdminUser,
+    mutateComment: deleteComment,
+  });
 
-  if (!isValidActionId(commentId)) {
-    return { ok: false };
-  }
-
-  const result = await deleteComment(commentId);
-
-  if (!result) {
-    return { ok: false };
-  }
-
+  if (!result.ok) return result;
   revalidatePath("/");
   revalidatePath("/admin");
   if (result.dealId) {
@@ -1526,11 +1494,11 @@ export async function deleteCommentAsAdminAction(commentId: string) {
 }
 
 export async function clearCommentReportsAsAdminAction(commentId: string) {
-  await requireAdminUser();
-  if (!isValidActionId(commentId)) return { ok: false };
-
-  const result = await clearCommentReports(commentId);
-  if (!result) return { ok: false };
+  const result = await moderateCommentOperation(commentId, {
+    requireAdmin: requireAdminUser,
+    mutateComment: clearCommentReports,
+  });
+  if (!result.ok) return result;
   revalidatePath("/admin");
   if (result.dealId) revalidatePath(`/deal/${result.dealId}`);
   return { ok: true };

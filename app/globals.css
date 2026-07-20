@@ -921,7 +921,6 @@ html {
     .post-rich-editor-button,
     .post-rich-editor-insert-button,
     .deal-carousel-action,
-    .category-sidebar-action,
     .admin-moderation-actions > button
   ) {
     min-height: 2.75rem;
@@ -935,8 +934,7 @@ html {
     .profile-comment-menu-button,
     .profile-pagination-action,
     .post-rich-editor-button,
-    .deal-carousel-action,
-    .category-sidebar-action
+    .deal-carousel-action
   ) {
     min-width: 2.75rem;
   }

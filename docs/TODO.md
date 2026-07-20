@@ -16,79 +16,52 @@ Priority labels for external follow-up:
 - **P2 — Optional operational capability:** Provider setup required before enabling email-dependent features.
 - **P3 — Deferred growth work:** Social login, affiliate monetisation, and product-data integrations to revisit only after the core website is public and the required accounts and permissions are approved.
 
-### Refine the mobile and tablet marketplace experience
+### Verify the responsive marketplace on physical devices and in production
 
-- Status: Repository implementation complete; physical-device and production verification pending
+- Status: Pending external and production verification
 - Priority: P1 — Release assurance
 - Added: 2026-07-15
-- Updated: 2026-07-16
-- Repository progress:
-  - Completed the feed-first mobile order, responsive 1/2/3/4-column feed, container-aware deal actions, 44px repeated controls, responsive sizing hints, lazy loading, touch-friendly gallery, and narrow profile pagination.
-  - Corrected responsive regressions discovered after completion: placed the deal check before the feed in document order and anchored it with named grid areas, kept the tablet feed at two columns, aligned and compacted mobile navigation, search, hero, menu, category, trust points, and sorting controls, added a single-row mobile logo/search header, a safe-area-aware bottom navigation for menu, posting, account, and authorized administrator access, a three-column mobile trust strip, and a divider-attached two-tier mobile sorting strip whose filter navigation stays anchored to the deals section, kept desktop account actions out of phone-landscape/tablet headers, prevented sparse content from stretching card height, restored the compact desktop card action row, and removed mobile pseudo-gradients that mis-composited in Safari full-page captures.
-  - Added the current LAN hostname to Next.js `allowedDevOrigins` so phone-based local development hydrates client controls instead of rendering inert Menu, Categories, autocomplete, voting, saving, and other interactive UI.
-  - Automated typecheck, lint, tests, and production build pass. Local browser checks pass at 320, 360, 390, 430, 768, 820, 1024, and 1180 CSS pixels with no page-level overflow; the 1024px three-column feed regression found during review was corrected.
-  - **P1:** Complete physical iOS Safari and Android Chrome checks before launch, measure production Core Web Vitals after public deployment, and select a trusted image transformation pipeline capable of generating real `srcset` variants for arbitrary user media before image traffic scales.
-- Goal: Make Deal Rakyat faster and easier to scan and operate on phones and tablets without replacing the responsive foundation that already works.
+- Updated: 2026-07-21
+- Depends on: Completed responsive marketplace implementation recorded below.
+- Goal: Validate the completed responsive experience under real mobile hardware, production traffic, and production image delivery.
 - Completion criteria:
-  - Make the mobile homepage feed-first by compacting the introduction and moving secondary trust and deal-check content below the first deal results where appropriate.
-  - Make deal cards respond to their available container width, including a practical three-column tablet stage between the current two- and four-column layouts.
-  - Replace the fixed-width deal-card action grid with an adaptable layout that does not clip or overlap when coarse-pointer controls expand.
-  - Give voting, comments, save, share, carousel, pagination, and other repeated touch controls consistent hit areas of about 44 by 44 CSS pixels where space permits.
-  - Deliver responsive image sizes to phones and tablets, preserve intrinsic dimensions, and lazy-load below-fold deal media.
-  - Use a full-width mobile gallery with touch-friendly previous/next controls and a horizontal thumbnail strip or paging indicators; swipe must not be the only way to change images.
-  - Simplify profile pagination on narrow screens while retaining the fuller page window on tablets and desktops.
-  - Preserve keyboard access, focus visibility, reduced motion, light and dark themes, safe areas, browser zoom, and 320 CSS pixel reflow.
-  - Measure mobile Core Web Vitals in production, with Interaction to Next Paint at or below 200 milliseconds at the 75th percentile as the responsiveness target.
-  - Verify the actual workflows at 320, 360, 390, 430, 768, 820, 1024, and 1180 CSS pixels in portrait and relevant landscape layouts.
-  - Complete final physical-device checks on iOS Safari and Android Chrome, including software keyboard, file picker, touch, safe-area, rotation, and zoom behavior.
-- Research references:
-  - [WCAG 2.2 reflow and input requirements](https://www.w3.org/TR/WCAG22/)
-  - [W3C target-size guidance](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum)
-  - [MDN container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Containment/Container_queries)
-  - [web.dev responsive images](https://web.dev/articles/serve-responsive-images)
-  - [web.dev Interaction to Next Paint](https://web.dev/articles/optimize-inp)
+  - Test the deployed workflows on physical iOS Safari and Android Chrome, including login, search, menus, voting, saving, posting, file selection, software keyboards, touch, safe areas, rotation, zoom, and light/dark themes.
+  - Measure production Core Web Vitals after public deployment, targeting LCP at or below 2.5 seconds, INP at or below 200 milliseconds, and CLS at or below 0.1 at the 75th percentile for mobile and desktop.
+  - Select and validate a trusted responsive-image transformation pipeline that generates genuine `srcset` variants for arbitrary user media before image traffic scales.
 
-### Redesign the admin experience using Settings as the reference
+### Activate PostgreSQL password throttling in the deployed backend
 
-- Status: Repository implementation complete; release verification and action regression coverage pending
+- Status: Repository implementation complete; deployment configuration pending
+- Priority: P0 — Required before treating password throttling as production-ready
+- Added: 2026-07-21
+- Goal: Activate the completed distributed limiter without bypassing the normal reviewed migration and deployment process.
+- Completion criteria:
+  - Set a dedicated random `PASSWORD_RATE_LIMIT_SECRET` of at least 32 bytes in the Next.js and backend server environments and use the same value on every instance.
+  - Deploy the backend normally so Strapi applies `2026.07.21T100000.add-password-rate-limits.js`; do not run the migration manually against production.
+  - Verify generic password-change failure and `Retry-After` behaviour without logging or storing raw account identifiers, IP addresses, credentials, or authentication secrets.
+
+### Verify administrator and account workflows on physical devices
+
+- Status: Repository integration coverage complete; physical-device release QA pending
 - Priority: P1 — Release assurance
 - Added: 2026-07-15
-- Updated: 2026-07-16
-- Repository progress:
-  - Replaced the heavy sidebar/card dashboard with the Settings-style section hierarchy, compact sticky navigation, restrained metrics, quieter controls, and responsive moderation tables.
-  - Preserved the server-side administrator redirect and every existing deal/comment moderation action, including accessible destructive confirmation dialogs and inline failure states.
-  - Typecheck, lint, tests, and production builds pass. Local mobile and desktop browser checks show no horizontal overflow and a clean console; final physical-device, dark-theme, full keyboard workflow, and isolated moderation-action regression coverage remain for release QA.
-- Goal: Redesign the admin dashboard around the quieter, section-based layout and control language established by the profile Settings page.
+- Updated: 2026-07-21
+- Depends on: Completed admin redesign, account settings, and isolated action fixtures recorded below.
+- Goal: Verify the completed sensitive workflows under real browser, input, and hardware conditions.
 - Completion criteria:
-  - Use the Settings page's restrained hierarchy, left-side section introductions, right-side working areas, dividers, compact controls, and direct status messaging as the visual reference without copying account-specific content.
-  - Preserve every existing server-side administrator authorization check and moderation capability for users, deals, comments, reports, approval, rejection, restoration, and deletion.
-  - Replace the current dashboard's heavy sidebar and card treatment with a scan-friendly moderation workspace that keeps queues, trust signals, filters, and destructive actions clearly separated.
-  - Keep high-volume moderation information compact on desktop and readable on phones and tablets, with no page-level horizontal overflow or hidden required actions.
-  - Cover loading, empty, error, filtered, pending, success, and destructive-confirmation states in light and dark themes with full keyboard access and visible focus.
-  - Verify the redesign at mobile, tablet, and desktop widths and add regression coverage for administrator access and moderation actions.
+  - Complete administrator workflow checks on physical mobile hardware and desktop in light and dark themes, including keyboard-only navigation, visible focus, loading, empty, filtered, error, success, and destructive-confirmation states.
 
-### Complete account settings that do not require email delivery
+### Complete account security policy and email-dependent capabilities
 
-- Status: Partially completed; destructive lifecycle blocked
-- Priority: P0 for production throttling and account deletion prerequisites; P1 for isolated action coverage; P2 for email-dependent features
+- Status: Blocked on account-lifecycle policy and email-provider decisions
+- Priority: P0 for account deletion prerequisites; P2 for email-dependent features
 - Added: 2026-07-15
-- Updated: 2026-07-16
-- Repository progress:
-  - Completed profile-picture reset, immutable-handle UI and server enforcement, authenticated password change with validation/current-session refresh/best-effort per-instance throttling, disabled email-only preferences, and the paginated in-app notification schema, event delivery, inbox, preferences, deduplication, and read state.
-  - **P1:** Added focused pure-helper tests for password validation, handle immutability, notification preferences and ownership, schema-safe notification payloads, deduplication, and read-state rules. Add isolated integration fixtures for avatar reset, password authorization, notification delivery and mutation, account/notification server actions, and administrator moderation actions.
-  - **P0:** Choose PostgreSQL or Redis for a shared password account-and-IP limiter before treating throttling as production-grade; the current in-process limiter is intentionally best-effort and does not provide distributed abuse protection.
-  - **P0 before enabling deletion:** Adopt revocable sessions or refresh tokens and decide recent-authentication proof, retention and legal holds, content anonymisation, recovery windows, and administrator audit policy. Legacy Strapi JWTs cannot currently be invalidated before expiry, so account deactivation/deletion must remain unavailable until these decisions are implemented.
-  - **P2:** Configure an approved email provider and required environment variables before enabling forgotten-password recovery, email-address changes, weekly summaries, or marketing email; ownership verification, consent, and unsubscribe controls remain required where applicable.
-- Goal: Finish useful first-party profile and account controls that can operate safely before Resend, email verification, and recovery are configured.
+- Updated: 2026-07-21
+- Goal: Enable the remaining account lifecycle and email capabilities only after their security and operational prerequisites are approved.
 - Completion criteria:
-  - Add a clear remove/reset action for the profile picture and preserve the existing upload, compression, validation, error, and fallback-initial behavior.
-  - Keep the account username/handle immutable, distinguish it clearly from the editable display name, and remove any suggestion that the handle can currently be edited.
-  - Add an authenticated change-password workflow using the current password, new password, confirmation, server-side validation, session handling, rate limiting, and actionable inline errors; keep forgotten-password recovery deferred until email delivery exists.
-  - Implement an in-app notification model and inbox for enabled new-comment, comment-reply, deal-approval, and saved-deal-update preferences instead of merely storing unused toggles.
-  - Keep weekly summaries and marketing emails disabled or clearly unavailable until Resend and the required consent, unsubscribe, and delivery controls are configured.
-  - Implement safe account deactivation and deletion with explicit confirmation, recent-authentication checks, moderation and legal-retention rules, content anonymisation or ownership decisions, session invalidation, and an auditable administrator recovery policy where appropriate.
-  - Keep email-address changes deferred until Deal Rakyat can verify ownership of the new address.
-  - Add tests for avatar removal, password validation and authorization, notification preference enforcement, notification read state, account deactivation/deletion races, retained-content rules, failure recovery, and mobile/keyboard accessibility.
+  - Before enabling account deactivation or deletion, adopt revocable sessions or refresh tokens and decide recent-authentication proof, retention and legal holds, content anonymisation, recovery windows, and administrator audit policy.
+  - Configure an approved email provider and required environment variables before enabling forgotten-password recovery, email-address changes, weekly summaries, or marketing email.
+  - Add ownership verification, consent, unsubscribe, rate-limit, failure-recovery, and audit controls appropriate to each enabled email workflow.
 
 ### Add optional connected-account sign-in
 
@@ -165,6 +138,89 @@ Priority labels for external follow-up:
   - [LHDN digital-business guidance](https://www.hasil.gov.my/en/company/digital-business/)
 
 ## Completed
+
+### Implement distributed PostgreSQL password-change throttling
+
+- Status: Completed
+- Added: 2026-07-21
+- Completed: 2026-07-21
+- Outcome:
+  - Kept Strapi's existing password hashing, PostgreSQL user storage, current-password verification, and session refresh behaviour.
+  - Wrapped Strapi's authenticated change-password controller so callers cannot bypass the limiter by calling the backend directly; the account identity comes only from the authenticated server context.
+  - Added a short-lived account-bound HMAC proof so Next.js can forward the member IP without allowing direct callers to spoof another IP or collapsing all server actions onto a shared frontend egress bucket.
+  - Required Vercel's platform-controlled client-IP header in production; generic forwarding headers remain available only for local development.
+  - Added atomic account and IP counters, conflict-safe row creation, row locking, 15-minute expiry and temporary lockouts, expired-row cleanup, generic fail-closed errors, and `Retry-After`.
+  - Stored only scoped HMAC-SHA256 identifiers under a dedicated backend secret; no raw account identifiers, IP addresses, passwords, credentials, tokens, or reusable authentication secrets enter the limiter table or logs.
+  - Added an idempotent migration plus isolated SQLite-backed concurrency, expiry, boundary, authorization, and failure fixtures; no shared or production data was accessed.
+- Required deployment configuration and normal migration application remain tracked separately under Active.
+
+### Add isolated account, notification, and moderation action fixtures
+
+- Status: Completed
+- Added: 2026-07-15
+- Completed: 2026-07-21
+- Outcome:
+  - Added pure dependency-injected operation seams while keeping Next.js Server Actions as thin authenticated adapters.
+  - Covered avatar reset ownership, settings validation and persistence failure, password authorization and session-cookie boundaries, notification preference and self-suppression, concurrent deduplication, recipient ownership, bulk partial failure and retry, and stale-storage batch limits.
+  - Covered administrator authorization-first behaviour, moderation validation, repeat approval deduplication, notification failure recovery, deal-media cleanup sequencing, and concurrent idempotent comment/report moderation.
+  - Required the Strapi token on every comment-report clearing stage so a partially configured public request cannot silently enter a protected mutation workflow.
+  - All fixtures use in-memory or temporary local stores and do not access shared or production data.
+- Physical-device and production release QA remain tracked separately under Active.
+
+### Remove demonstrably unused source and disposable build artifacts
+
+- Status: Completed
+- Added: 2026-07-21
+- Completed: 2026-07-21
+- Outcome:
+  - Removed three unreferenced UI modules, their orphaned category-sidebar selectors, two ignored Strapi starter examples, five unused default Next.js public assets, and one unused React import.
+  - Confirmed automatic scraping source and runtime dependencies remain absent; left Next.js optional peer metadata, transitive browser data, uncertain backup brand assets, and Strapi auto-discovered packages intact.
+  - Cleared only reproducible build and typecheck output while preserving dependencies, local databases, uploads, environment files, credentials, Git data, and user-owned files.
+
+### Implement the responsive mobile and tablet marketplace experience
+
+- Status: Completed
+- Added: 2026-07-15
+- Completed: 2026-07-16
+- Outcome:
+  - Made the homepage feed-first and delivered a responsive 1/2/3/4-column feed, container-aware card actions, practical touch targets, responsive sizing hints, lazy loading, a touch-friendly gallery, and narrow profile pagination.
+  - Added a single-row mobile logo/search header, safe-area-aware bottom navigation for menu, posting, account and authorized administrator access, a compact trust strip, and a two-tier sorting strip anchored to the deals section.
+  - Preserved keyboard access, visible focus, reduced motion, light/dark themes, browser zoom and 320 CSS pixel reflow while correcting tablet, sparse-card, desktop-action and Safari capture regressions found during review.
+  - Added the LAN development hostname to Next.js `allowedDevOrigins` so physical-phone testing hydrates interactive controls correctly.
+  - Typecheck, lint, tests and production build passed; local browser verification passed at 320, 360, 390, 430, 768, 820, 1024 and 1180 CSS pixels without page-level overflow.
+- Remaining real-device, production-performance and image-pipeline verification is tracked separately under Active.
+- Research references:
+  - [WCAG 2.2 reflow and input requirements](https://www.w3.org/TR/WCAG22/)
+  - [W3C target-size guidance](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum)
+  - [MDN container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Containment/Container_queries)
+  - [web.dev responsive images](https://web.dev/articles/serve-responsive-images)
+  - [web.dev Interaction to Next Paint](https://web.dev/articles/optimize-inp)
+
+### Redesign the administrator experience using Settings as the reference
+
+- Status: Completed
+- Added: 2026-07-15
+- Completed: 2026-07-16
+- Outcome:
+  - Replaced the heavy sidebar/card dashboard with the Settings-style hierarchy, compact sticky navigation, restrained metrics, quieter controls and responsive moderation tables.
+  - Preserved server-side administrator authorization and existing user, deal, comment and report moderation capabilities.
+  - Added accessible destructive confirmation dialogs and inline loading, success and failure feedback without using native browser confirmation dialogs.
+  - Typecheck, lint, tests and production builds passed; local mobile and desktop browser checks showed no horizontal overflow or console errors.
+- Remaining physical-device workflow verification is tracked separately under Active.
+
+### Implement safe first-party account settings and in-app notifications
+
+- Status: Completed
+- Added: 2026-07-15
+- Completed: 2026-07-16
+- Outcome:
+  - Added profile-picture reset while preserving upload, compression, validation, error and fallback-initial behaviour.
+  - Clarified and enforced immutable account handles separately from editable display names.
+  - Added authenticated password changes with current-password verification, server validation, current-session refresh, and inline errors; distributed PostgreSQL throttling was completed separately on 2026-07-21.
+  - Added paginated in-app notifications, preferences, event delivery, deduplication and read state for the currently supported first-party events.
+  - Kept email-only preferences visibly unavailable until an email provider, verification, consent and unsubscribe controls exist.
+  - Added focused helper tests for password validation, handle immutability, notification preferences and ownership, schema-safe payloads, deduplication and read-state rules.
+- Destructive account lifecycle policy and email delivery remain tracked separately under Active.
 
 ### Temporarily remove automatic product scraping
 

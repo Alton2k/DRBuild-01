@@ -735,6 +735,7 @@ export async function reportComment(
 export async function clearCommentReports(commentId: string): Promise<{ dealId: string } | null> {
   const comment = await strapiRequest<StrapiSingleResponse<StrapiComment>>(`/api/comments/${commentId}`, {
     query: new URLSearchParams({ populate: "deal" }),
+    requireToken: true,
   }).then((response) => (response.data ? toComment(response.data) : null));
   if (!comment) return null;
 
@@ -743,7 +744,10 @@ export async function clearCommentReports(commentId: string): Promise<{ dealId: 
       "filters[commentDocumentId][$eq]": commentId,
       "pagination[pageSize]": "100",
     });
-    const reports = await strapiRequest<StrapiListResponse<StrapiCommentReport>>("/api/comment-reports", { query });
+    const reports = await strapiRequest<StrapiListResponse<StrapiCommentReport>>("/api/comment-reports", {
+      query,
+      requireToken: true,
+    });
     if (reports.data.length === 0) break;
     for (const report of reports.data) {
       await strapiRequest(`/api/comment-reports/${getStrapiEntityId(report)}`, {
